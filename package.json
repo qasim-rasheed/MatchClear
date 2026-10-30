@@ -1,0 +1,41 @@
+{
+  "name": "matchclear",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local workspace for tournament shirt decisions.",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "tsx --env-file-if-exists=.env.local scripts/database.ts migrate",
+    "db:seed": "tsx --env-file-if-exists=.env.local scripts/database.ts seed",
+    "worker": "tsx --env-file-if-exists=.env.local src/worker/index.ts",
+    "youcam:check": "tsx --env-file-if-exists=.env.local scripts/youcam-spike.ts",
+    "test:e2e": "playwright test"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

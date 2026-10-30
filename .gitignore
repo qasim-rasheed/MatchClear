@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+docs/
+# Local credentials (only documented templates may be committed)
+.env
+.env.*
+!.env.example
+.vercel/
+
+# Private image inputs, provider responses and local experiments
+.local/
+private-data/
+*.log
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+
+# TypeScript incremental cache
+*.tsbuildinfo
