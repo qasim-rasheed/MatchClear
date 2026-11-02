@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Workspace } from "@/server/workspace";
 import {
   formatMoney,
@@ -12,7 +12,11 @@ import {
 import { Shirt } from "./shirt";
 import { CsvImport } from "./csv-import";
 import { PipelineViews, assetUrl } from "./pipeline-views";
-import { OrderBriefView, TextAssistantView, DataRecoveryView } from "./completion-views";
+import { OrderBriefView, DataRecoveryView } from "./completion-views";
+import { organizerJourney } from "@/lib/organizer-journey";
+import { OrganizerHome } from "./organizer-home";
+import { AssistantDock } from "./assistant-dock";
+import type { OrganizerSection, OrganizerFocus } from "@/domain/assistant-agent";
 
 type Tab =
   | "overview"
@@ -34,18 +38,17 @@ type Editor = {
   create?: boolean;
 };
 const labels: Record<Tab, string> = {
-  overview: "Overview",
+  overview: "Your tournament",
   teams: "Teams",
-  fixtures: "Fixtures",
-  shirts: "Shirt library",
-  previews: "Preview Studio",
-  reviews: "Matchup Review",
-  plan: "Tournament Plan",
-  brief: "Order Brief",
+  fixtures: "Matches",
+  shirts: "Shirt choices",
+  previews: "Preview shirts",
+  reviews: "Compare matchups",
+  plan: "Plan & order",
+  brief: "Order brief",
   assistant: "Text Assistant",
   settings: "Workspace settings",
 };
-const steps = ["Set up event", "Preview shirts", "Review matchups", "Choose a plan", "Order brief"];
 
 function Icon({ name }: { name: string }) {
   const paths: Record<string, ReactNode> = {
@@ -94,9 +97,13 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-export function WorkspaceApp({ initial }: { initial: Workspace }) {
+export function WorkspaceApp({ initial, initialTab }: { initial: Workspace; initialTab?: string }) {
   const [data, setData] = useState(initial);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(() =>
+    initialTab && initialTab !== "assistant" && Object.hasOwn(labels, initialTab)
+      ? (initialTab as Tab)
+      : "overview",
+  );
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -104,6 +111,39 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
   const [filter, setFilter] = useState("");
   const [csvImport, setCsvImport] = useState<"teams" | "fixtures" | null>(null);
   const event = data.event;
+  const journey = organizerJourney(data);
+  const [assistantOpen, setAssistantOpen] = useState(initialTab === "assistant");
+  const [assistantModal, setAssistantModal] = useState(false);
+  const [assistantFocus, setAssistantFocus] = useState<OrganizerFocus>({});
+  const closeAssistant = useCallback(() => setAssistantOpen(false), []);
+  const navigate = useCallback(
+    (next: OrganizerSection, focus: OrganizerFocus = {}) => {
+      setTab(next);
+      setFilter("");
+      setAssistantFocus(focus);
+      if (assistantModal) setAssistantOpen(false);
+    },
+    [assistantModal],
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 700px)");
+    setAssistantModal(media.matches);
+    const change = () => setAssistantModal(media.matches);
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
+  const continueJourney = () => {
+    navigate(journey.next.tab);
+    if (journey.next.editor)
+      open({ kind: journey.next.editor, create: journey.next.editor === "event" });
+  };
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (event?.id) params.set("event", event.id);
+    if (tab !== "overview") params.set("tab", tab);
+    window.history.replaceState(null, "", params.size ? `/?${params}` : "/");
+    window.scrollTo(0, 0);
+  }, [event?.id, tab]);
   const currency = event?.currency || "EUR";
   const count = data.teams.reduce((n, t) => n + totalQuantity(t.quantities), 0);
   async function refresh(eventId?: string) {
@@ -168,26 +208,12 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
     setEditor(value);
   }
   const teamName = (id: string) => data.teams.find((t) => t.id === id)?.name || "Team unavailable";
-  const readiness = [
-    data.teams.length > 1,
-    data.fixtures.length > 0,
-    data.teams.length > 0 && data.teams.every((t) => data.options.some((o) => o.teamId === t.id)),
-    Boolean(
-      data.options.length &&
-      data.options.every((o) =>
-        data.pipeline?.previews.some(
-          (p) => p.teamId === o.teamId && p.designId === o.designId && p.usable,
-        ),
-      ),
-    ),
-  ];
-
   return (
-    <div className="app-shell">
+    <div className="app-shell guided-shell">
       <a href="#main" className="skip-link">
         Skip to workspace
       </a>
-      <aside className="sidebar">
+      <aside className="sidebar" inert={assistantOpen && assistantModal}>
         <a className="brand" href="/" aria-label="MatchClear home">
           <span className="brand-mark">
             <i />
@@ -213,59 +239,40 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
             ))}
           </select>
         </label>
-        <nav aria-label="Workspace">
-          {(
-            [
-              "overview",
-              "teams",
-              "fixtures",
-              "shirts",
-              "previews",
-              "reviews",
-              "plan",
-              "brief",
-              "assistant",
-            ] as Tab[]
-          ).map((key) => (
+        <nav aria-label="Tournament steps">
+          <button
+            className={`nav-item ${tab === "overview" ? "active" : ""}`}
+            aria-current={tab === "overview" ? "page" : undefined}
+            onClick={() => navigate("overview")}
+          >
+            <Icon name="overview" />
+            Your tournament
+          </button>
+          {journey.stages.map((stage, i) => (
             <button
-              key={key}
-              className={`nav-item ${tab === key ? "active" : ""}`}
-              aria-current={tab === key ? "page" : undefined}
-              onClick={() => {
-                setTab(key);
-                setFilter("");
-              }}
+              key={stage.id}
+              className={`nav-item ${stage.tabs.includes(tab) ? "active" : ""} ${stage.done ? "done" : ""}`}
+              aria-current={stage.tabs.includes(tab) ? "page" : undefined}
+              onClick={() => navigate(stage.tab)}
             >
-              <Icon name={key} />
-              {labels[key]}
-              {key === "teams" && <span>{data.teams.length}</span>}
-              {key === "fixtures" && <span>{data.fixtures.length}</span>}
+              <span className="phase-number">{stage.done ? "✓" : i + 1}</span>
+              {stage.label}
+              {stage.done && <small>Done</small>}
             </button>
           ))}
-        </nav>
-        <div className="sidebar-guide">
-          <span className="eyebrow">THE NEXT STEP</span>
-          <h3>
-            Start with the shirts
-            <br />
-            you already have.
-          </h3>
-          <p>Add owned shirts alongside new options to keep the order practical.</p>
-          <button className="text-button" onClick={() => setTab("shirts")}>
-            Open shirt library <span aria-hidden="true">↗</span>
-          </button>
-        </div>
+        </nav>{" "}
         <div className="sidebar-bottom">
           <button
             className={`nav-item ${tab === "settings" ? "active" : ""}`}
             onClick={() => setTab("settings")}
           >
             <Icon name="settings" />
-            Workspace settings
+            Settings
           </button>
           <button className="nav-item" onClick={() => open({ kind: "help" })}>
-            <span className="help-icon">?</span>About this baseline
+            <span className="help-icon">?</span>About MatchClear
           </button>
+          <a href="/proof">Explore the working example ↗</a>
           <div className="local-status">
             <span />
             Local workspace <small>Saved on this computer</small>
@@ -273,9 +280,11 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
         </div>
       </aside>
       <div className="workspace-body">
-        <header className="topbar">
+        <header className="topbar" inert={assistantOpen && assistantModal}>
           <div className="breadcrumb">
-            Workspace <span>/</span> <strong>{labels[tab]}</strong>
+            <span>{event?.name || "MatchClear"}</span>
+            <span>/</span>
+            <strong>{labels[tab]}</strong>
           </div>
           <div className="topbar-actions">
             {(tab === "teams" || tab === "fixtures") && (
@@ -290,473 +299,408 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                 Import CSV
               </button>
             )}
-            <span className="save-indicator">
-              {busy ? "Saving / loading…" : "Local storage connected"}
-            </span>
+            <span className="save-indicator">{busy ? "Saving / loading…" : "Saved"}</span>
             <button className="button small" onClick={() => open({ kind: "event", create: true })}>
-              ＋ New event
+              ＋ New tournament
             </button>
           </div>
         </header>
-        <main id="main" tabIndex={-1}>
-          {notice && (
-            <div className="notice" role="status">
-              {notice}
-              <button aria-label="Dismiss notification" onClick={() => setNotice("")}>
-                ×
-              </button>
-            </div>
-          )}
-          {error && !editor && (
-            <div className="error-message" role="alert">
-              {error}
-              <button className="text-button" onClick={() => void refresh(event?.id)}>
-                Refresh saved data
-              </button>
-            </div>
-          )}
-          {!event ? (
-            <section className="empty-page">
-              <span className="eyebrow">YOUR NEXT TOURNAMENT</span>
-              <h1>A clear starting point.</h1>
-              <p>Create an event to add teams, fixtures and shirt options.</p>
-              <button className="button" onClick={() => open({ kind: "event", create: true })}>
-                Create an event
-              </button>
-            </section>
-          ) : (
-            <>
-              <div className="page-heading">
-                <div>
-                  <div className="eyebrow">
-                    {event.sample ? "ILLUSTRATIVE STARTER EVENT" : "YOUR EVENT"}
-                    <span className="dot-separator">·</span>ONE SHIRT PER TEAM
-                  </div>
-                  <h1>{tab === "overview" ? event.name : labels[tab]}</h1>
-                  <p>
-                    {tab === "overview"
-                      ? "Bring the teams, shirts and matchups together before you order."
-                      : tab === "teams"
-                        ? "Set the roster and shirt quantities for each team."
-                        : tab === "fixtures"
-                          ? "Record who plays whom. Every opposing pair will need a review."
-                          : tab === "previews"
-                            ? "Save permitted source photos, generate real previews and inspect their appearance."
-                            : tab === "reviews"
-                              ? "Inspect opposing combinations and record human review with current image evidence."
-                              : tab === "plan"
-                                ? "Find a complete selection using reviewed pairs, available quantities and your budget."
-                                : tab === "shirts"
-                                  ? "Keep owned shirts and new options in the same place."
-                                  : tab === "brief" ? "Create a frozen order brief from your confirmed selection." : tab === "assistant" ? "Review written proposals before changing your saved event." : "Manage event details, local data and integration readiness."}
-                  </p>
-                </div>
-                <button className="button secondary" onClick={() => open({ kind: "event" })}>
-                  Edit event <span aria-hidden="true">↗</span>
+        <div className="workspace-stage">
+          <main id="main" tabIndex={-1} inert={assistantOpen && assistantModal}>
+            {notice && (
+              <div className="notice" role="status">
+                {notice}
+                <button aria-label="Dismiss notification" onClick={() => setNotice("")}>
+                  ×
                 </button>
               </div>
-              {tab === "overview" && (
-                <>
-                  <div className="journey" aria-label="Project workflow">
-                    {steps.map((step, i) => (
-                      <button
-                        type="button"
-                        key={step}
-                        className={`journey-step ${i === 0 ? "current" : ""}`}
-                        onClick={() =>
-                          setTab((["teams", "previews", "reviews", "plan", "brief"] as Tab[])[i])
-                        }
-                      >
-                        <span>{String(i + 1).padStart(2, "0")}</span>
-                        {step}
-                      </button>
-                    ))}
-                  </div>
-                  <section className="summary-strip" aria-label="Event summary">
-                    <Summary value={String(data.teams.length).padStart(2, "0")} label="Teams" />
-                    <Summary value={String(count)} label="Shirts needed" />
-                    <Summary
-                      value={String(data.fixtures.length).padStart(2, "0")}
-                      label="Scheduled matches"
-                    />
-                    <Summary
-                      value={formatMoney(event.budgetMinor, currency)}
-                      label="Order budget"
-                    />
-                  </section>
-                  <div className="overview-grid">
-                    <section>
-                      <SectionTitle
-                        title="The teams"
-                        subtitle="Shirt options, side by side."
-                        action="Manage teams"
-                        onClick={() => setTab("teams")}
-                      />
-                      <div className="team-grid">
-                        {data.teams.map((t, i) => (
-                          <TeamCard
-                            key={t.id}
-                            team={t}
-                            index={i}
-                            designs={data.designs}
-                            options={data.options}
-                            photoIds={
-                              data.pipeline?.assets.filter((a) => !a.deletedAt).map((a) => a.id) ||
-                              []
-                            }
-                            previewStatus={teamPreviewStatus(data, t.id)}
-                            onEdit={() => open({ kind: "team", item: t })}
-                          />
-                        ))}
-                        {!data.teams.length && (
-                          <Empty
-                            text="Add your first team to start building the event."
-                            action="Add team"
-                            onClick={() => open({ kind: "team" })}
-                          />
-                        )}
-                      </div>
-                      <SectionTitle
-                        title="On the fixture list"
-                        subtitle="Reviews will be recorded against each opposing pair."
-                        action="All fixtures"
-                        onClick={() => setTab("fixtures")}
-                      />
-                      <FixtureList data={data} teamName={teamName} />
-                    </section>
-                    <aside className="right-column">
-                      <section className="setup-panel">
-                        <span className="eyebrow">EVENT READINESS</span>
-                        <h2>
-                          A good plan starts
-                          <br />
-                          with good inputs.
-                        </h2>
-                        <ol>
-                          {[
-                            "Add at least two teams",
-                            "Enter the opposing pairs",
-                            "Assign shirt options",
-                            "Add real preview evidence",
-                          ].map((text, i) => (
-                            <li key={text}>
-                              <span className={`check ${readiness[i] ? "done" : ""}`}>
-                                {readiness[i] ? "✓" : i + 1}
-                              </span>
-                              <div>
-                                {text}
-                                <small>
-                                  {readiness[i]
-                                    ? "Ready"
-                                    : i === 3
-                                      ? "Open Preview Studio"
-                                      : "Needs your input"}
-                                </small>
-                              </div>
-                            </li>
-                          ))}
-                        </ol>
-                        <button
-                          className="button full"
-                          onClick={() =>
-                            data.teams.length > 1 && data.fixtures.length && readiness[2]
-                              ? setTab("previews")
-                              : open({
-                                  kind:
-                                    data.teams.length < 2
-                                      ? "team"
-                                      : data.fixtures.length
-                                        ? "option"
-                                        : "fixture",
-                                })
-                          }
-                        >
-                          Continue event setup <span aria-hidden="true">→</span>
-                        </button>
-                      </section>
-                      <section className="evidence-note">
-                        <span className="outline-symbol">i</span>
-                        <h3>Examples, clearly marked.</h3>
-                        <p>
-                          {event.sample
-                            ? "Example teams and prices are illustrative. Catalog drawings are illustrations; source photos and their permission notes are kept separately. Development walkthrough decisions are not user-research findings."
-                            : "Your records are saved locally. Catalog illustrations need real photographic references before a preview can support matchup review."}
-                        </p>
-                        <button className="text-button" onClick={() => open({ kind: "help" })}>
-                          What this version includes ↗
-                        </button>
-                      </section>
-                    </aside>
-                  </div>
-                </>
-              )}
-              {tab === "teams" && (
-                <>
-                  <SectionTitle
-                    title={`${data.teams.length} teams in this event`}
-                    subtitle={`${count} shirts requested across the roster.`}
-                    action="＋ Add team"
-                    onClick={() => open({ kind: "team" })}
-                  />
-                  <div className="team-grid wide">
-                    {data.teams.map((t, i) => (
-                      <TeamCard
-                        key={t.id}
-                        team={t}
-                        index={i}
-                        designs={data.designs}
-                        options={data.options}
-                        photoIds={
-                          data.pipeline?.assets.filter((a) => !a.deletedAt).map((a) => a.id) || []
-                        }
-                        previewStatus={teamPreviewStatus(data, t.id)}
-                        onEdit={() => open({ kind: "team", item: t })}
-                      />
-                    ))}
-                    {!data.teams.length && (
-                      <Empty
-                        text="Your team list is empty."
-                        action="Add a team"
-                        onClick={() => open({ kind: "team" })}
-                      />
+            )}
+            {error && !editor && (
+              <div className="error-message" role="alert">
+                {error}
+                <button className="text-button" onClick={() => void refresh(event?.id)}>
+                  Refresh saved data
+                </button>
+              </div>
+            )}
+            {!event ? (
+              <section className="empty-page">
+                <span className="eyebrow">YOUR NEXT TOURNAMENT</span>
+                <h1>A clear starting point.</h1>
+                <p>Create an event to add teams, fixtures and shirt options.</p>
+                <button className="button" onClick={() => open({ kind: "event", create: true })}>
+                  Create an event
+                </button>
+              </section>
+            ) : (
+              <>
+                <div className="page-heading">
+                  <div>
+                    <div className="eyebrow">
+                      {event.sample ? "ILLUSTRATIVE STARTER EVENT" : "YOUR EVENT"}
+                      <span className="dot-separator">·</span>ONE SHIRT PER TEAM
+                    </div>
+                    <h1>{tab === "overview" ? event.name : labels[tab]}</h1>
+                    {tab === "overview" && (
+                      <p>Choose team shirts that work together before you order.</p>
                     )}
                   </div>
-                </>
-              )}
-              {tab === "fixtures" && (
-                <>
-                  <SectionTitle
-                    title="Scheduled opposing pairs"
-                    subtitle="One entry per opposing pair in fixed-shirt mode."
-                    action="＋ Add fixture"
-                    onClick={() => open({ kind: "fixture" })}
-                  />
-                  <FixtureList
-                    data={data}
-                    teamName={teamName}
-                    onRemove={(id) => void mutate("removeFixture", undefined, { fixtureId: id })}
-                    busy={busy}
-                  />
-                </>
-              )}
-              {tab === "shirts" && (
-                <>
-                  <div className="library-toolbar">
-                    <label className="search-field">
-                      <span aria-hidden="true">⌕</span>
-                      <input
-                        aria-label="Search shirt designs"
-                        placeholder="Find a shirt or colour…"
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                      />
-                    </label>
-                    <div>
-                      <button className="button secondary" onClick={() => open({ kind: "option" })}>
-                        Assign shirt to team
-                      </button>
-                      <button className="button" onClick={() => open({ kind: "design" })}>
-                        ＋ Add design
-                      </button>
-                    </div>
-                  </div>
-                  <div className="library-grid">
-                    {data.designs
-                      .filter((d) =>
-                        `${d.name} ${d.colour}`.toLowerCase().includes(filter.toLowerCase()),
-                      )
-                      .map((d) => (
-                        <article className="shirt-card" key={d.id}>
-                          <div className="shirt-stage">
-                            <span className="stage-label">
-                              {d.assetId ? "PHOTO REFERENCE" : "ILLUSTRATION"}
-                            </span>
-                            {d.assetId &&
-                            data.pipeline?.assets.some(
-                              (a) => a.id === d.assetId && !a.deletedAt,
-                            ) ? (
-                              <img
-                                className="library-reference"
-                                src={assetUrl(event.id, d.assetId)}
-                                alt={`${d.name} original garment reference`}
-                              />
-                            ) : (
-                              <Shirt
-                                primary={d.primaryHex}
-                                secondary={d.secondaryHex}
-                                pattern={d.pattern}
-                                label={`${d.colour} ${d.pattern} shirt illustration`}
-                              />
-                            )}
-                            <span className="design-number">
-                              REF {d.id.slice(0, 5).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="shirt-details">
-                            <div>
-                              <h3>{d.name}</h3>
-                              <p>
-                                {d.colour} · {d.pattern}
-                              </p>
-                            </div>
-                            <button
-                              className="icon-button"
-                              aria-label={`Edit ${d.name}`}
-                              onClick={() => open({ kind: "design", item: d })}
-                            >
-                              ↗
-                            </button>
-                          </div>
-                          <div className="option-list">
-                            {data.options
-                              .filter((o) => o.designId === d.id)
-                              .map((o) => {
-                                const team = data.teams.find((t) => t.id === o.teamId)!;
-                                const quote = quoteOption(o, team.quantities);
-                                return (
-                                  <button
-                                    key={o.id}
-                                    className="option-row"
-                                    onClick={() => open({ kind: "option", item: o })}
-                                  >
-                                    <span>
-                                      {team.code}{" "}
-                                      <small>
-                                        {o.owned
-                                          ? "Owned"
-                                          : `${formatMoney(o.unitMinor, currency)} / shirt`}
-                                      </small>
-                                    </span>
-                                    <strong>
-                                      {!o.available
-                                        ? "Unavailable"
-                                        : quote.minimumOrderNeedsSizes
-                                          ? "Sizes needed for extras"
-                                          : !quote.eligible
-                                            ? "Check stock"
-                                            : formatMoney(quote.totalMinor, currency)}{" "}
-                                      <span aria-hidden="true">↗</span>
-                                    </strong>
-                                  </button>
-                                );
-                              })}
-                            {!data.options.some((o) => o.designId === d.id) && (
-                              <p className="muted">Not assigned to a team yet.</p>
-                            )}
-                          </div>
-                        </article>
-                      ))}
-                  </div>
-                  {!data.designs.length && (
-                    <Empty
-                      text="Add a design, then assign it to a team."
-                      action="Add a design"
-                      onClick={() => open({ kind: "design" })}
-                    />
-                  )}
-                </>
-              )}
-              {(tab === "previews" || tab === "reviews" || tab === "plan") && (
-                <PipelineViews
-                  key={`${event.id}:${tab}`}
-                  data={data}
-                  view={tab}
-                  onData={setData}
-                  pollingEnabled={!editor && !busy && !csvImport}
-                  onOrderBrief={() => setTab("brief")}
-                />
-              )}
-              {tab === "brief" && <OrderBriefView key={event.id} data={data} onData={setData} />}
-              {tab === "assistant" && <TextAssistantView key={event.id} data={data} onData={setData} />}
-              {tab === "settings" && (
-                <div className="settings-grid">
-                  <DataRecoveryView pending={data.pipeline?.cleanupPending} />
-                  <section className="settings-panel">
-                    <span className="eyebrow">EVENT DETAILS</span>
-                    <h2>{event.name}</h2>
-                    <dl>
-                      <dt>Order budget</dt>
-                      <dd>{formatMoney(event.budgetMinor, currency)}</dd>
-                      <dt>Event date</dt>
-                      <dd>{event.eventDate || "Not set"}</dd>
-                      <dt>Choice rule</dt>
-                      <dd>One fixed shirt per team</dd>
-                      <dt>Saved revision</dt>
-                      <dd>{event.revision}</dd>
-                      <dt>Data location</dt>
-                      <dd>This computer · SQLite</dd>
-                    </dl>
-                    <button className="button secondary" onClick={() => open({ kind: "event" })}>
-                      Edit event details
-                    </button>
-                  </section>
-                  <section className="settings-panel">
-                    <span className="eyebrow">YOUCAM CONNECTION</span>
-                    <h2>
-                      {data.integration.configured ? "Key configured." : "Key not configured."}
-                    </h2>
-                    <p>
-                      {data.integration.configured
-                        ? "The server can read a local key. Preview Studio queues real Clothes V3 tasks through the local worker."
-                        : "Add YOUCAM_API_KEY to your ignored .env.local file to prepare the feasibility test."}
-                    </p>
-                    <div className="status-tag">
-                      {data.integration.liveValidated
-                        ? "Live smoke test passed"
-                        : "Live validation pending"}
-                    </div>
-                    <p className="small-copy">
-                      Estimated units reserved: {data.integration.estimatedUnits}. Account billing
-                      is not automatically reconciled. The local worker must be running for
-                      generation and planning.
-                    </p>
-                  </section>
-                  <section className="settings-panel full-span">
-                    <span className="eyebrow">RECENT CHANGES</span>
-                    <h2>Workspace history</h2>
-                    <ul className="activity-list">
-                      {data.activity.map((a) => (
-                        <li key={a.id}>
-                          <span>{activityLabel(a.action)}</span>
-                          <time dateTime={a.createdAt}>
-                            {new Date(a.createdAt).toLocaleString("en-GB")}
-                          </time>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                  <section className="settings-panel full-span">
-                    <h3>Archive this event</h3>
-                    <p>
-                      Hide the event from the active list and keep its saved history. No photos or
-                      records are deleted.
-                    </p>
-                    <button
-                      className="button secondary danger"
-                      disabled={busy}
-                      onClick={() => {
-                        if (
-                          window.confirm(`Archive ${event.name}? Its saved records will be kept.`)
-                        )
-                          void mutate("archiveEvent");
-                      }}
-                    >
-                      Archive event
-                    </button>
-                  </section>
+                  <button className="button secondary" onClick={() => open({ kind: "event" })}>
+                    Edit event <span aria-hidden="true">↗</span>
+                  </button>
                 </div>
-              )}
-              <footer className="workspace-footer">
-                <span>MatchClear / Organizer workspace</span>
-                <span>
-                  Appearance review supports a decision. It does not certify physical kit
-                  visibility.
-                </span>
-              </footer>
-            </>
-          )}
-        </main>
+                {(tab === "teams" || tab === "fixtures") && (
+                  <nav className="section-switch" aria-label="Event setup">
+                    <button
+                      aria-current={tab === "teams" ? "page" : undefined}
+                      onClick={() => navigate("teams")}
+                    >
+                      Teams & sizes
+                    </button>
+                    <button
+                      aria-current={tab === "fixtures" ? "page" : undefined}
+                      onClick={() => navigate("fixtures")}
+                    >
+                      Matches
+                    </button>
+                  </nav>
+                )}
+                {(tab === "plan" || tab === "brief") && (
+                  <nav className="section-switch" aria-label="Plan and order">
+                    <button
+                      aria-current={tab === "plan" ? "page" : undefined}
+                      onClick={() => navigate("plan")}
+                    >
+                      Shirt plan
+                    </button>
+                    <button
+                      aria-current={tab === "brief" ? "page" : undefined}
+                      onClick={() => navigate("brief")}
+                    >
+                      Order brief
+                    </button>
+                  </nav>
+                )}
+                {tab === "overview" && (
+                  <OrganizerHome
+                    data={data}
+                    onNavigate={navigate}
+                    onContinue={continueJourney}
+                    onAsk={() => setAssistantOpen(true)}
+                  />
+                )}{" "}
+                {tab === "teams" && (
+                  <>
+                    <SectionTitle
+                      title={`${data.teams.length} teams in this event`}
+                      subtitle={`${count} shirts requested across the roster.`}
+                      action="＋ Add team"
+                      onClick={() => open({ kind: "team" })}
+                    />
+                    <div className="team-grid wide">
+                      {data.teams.map((t, i) => (
+                        <TeamCard
+                          key={t.id}
+                          team={t}
+                          index={i}
+                          designs={data.designs}
+                          options={data.options}
+                          photoIds={
+                            data.pipeline?.assets.filter((a) => !a.deletedAt).map((a) => a.id) || []
+                          }
+                          previewStatus={teamPreviewStatus(data, t.id)}
+                          onEdit={() => open({ kind: "team", item: t })}
+                        />
+                      ))}
+                      {!data.teams.length && (
+                        <Empty
+                          text="Your team list is empty."
+                          action="Add a team"
+                          onClick={() => open({ kind: "team" })}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
+                {tab === "fixtures" && (
+                  <>
+                    <SectionTitle
+                      title={`${data.fixtures.length} matches`}
+                      subtitle=""
+                      action="＋ Add fixture"
+                      onClick={() => open({ kind: "fixture" })}
+                    />
+                    <FixtureList
+                      data={data}
+                      teamName={teamName}
+                      onRemove={(id) => void mutate("removeFixture", undefined, { fixtureId: id })}
+                      busy={busy}
+                    />
+                  </>
+                )}
+                {tab === "shirts" && (
+                  <>
+                    <div className="library-toolbar">
+                      <label className="search-field">
+                        <span aria-hidden="true">⌕</span>
+                        <input
+                          aria-label="Search shirt designs"
+                          placeholder="Find a shirt or colour…"
+                          value={filter}
+                          onChange={(e) => setFilter(e.target.value)}
+                        />
+                      </label>
+                      <div>
+                        <button
+                          className="button secondary"
+                          onClick={() => open({ kind: "option" })}
+                        >
+                          Assign shirt to team
+                        </button>
+                        <button className="button" onClick={() => open({ kind: "design" })}>
+                          ＋ Add design
+                        </button>
+                      </div>
+                    </div>
+                    <div className="library-grid">
+                      {data.designs
+                        .filter((d) =>
+                          `${d.name} ${d.colour}`.toLowerCase().includes(filter.toLowerCase()),
+                        )
+                        .map((d) => (
+                          <article className="shirt-card" key={d.id}>
+                            <div className="shirt-stage">
+                              <span className="stage-label">
+                                {d.assetId ? "PHOTO REFERENCE" : "ILLUSTRATION"}
+                              </span>
+                              {d.assetId &&
+                              data.pipeline?.assets.some(
+                                (a) => a.id === d.assetId && !a.deletedAt,
+                              ) ? (
+                                <img
+                                  className="library-reference"
+                                  src={assetUrl(event.id, d.assetId)}
+                                  alt={`${d.name} original garment reference`}
+                                />
+                              ) : (
+                                <Shirt
+                                  primary={d.primaryHex}
+                                  secondary={d.secondaryHex}
+                                  pattern={d.pattern}
+                                  label={`${d.colour} ${d.pattern} shirt illustration`}
+                                />
+                              )}
+                              <span className="design-number">
+                                REF {d.id.slice(0, 5).toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="shirt-details">
+                              <div>
+                                <h3>{d.name}</h3>
+                                <p>
+                                  {d.colour} · {d.pattern}
+                                </p>
+                              </div>
+                              <button
+                                className="icon-button"
+                                aria-label={`Edit ${d.name}`}
+                                onClick={() => open({ kind: "design", item: d })}
+                              >
+                                ↗
+                              </button>
+                            </div>
+                            <div className="option-list">
+                              {data.options
+                                .filter((o) => o.designId === d.id)
+                                .map((o) => {
+                                  const team = data.teams.find((t) => t.id === o.teamId)!;
+                                  const quote = quoteOption(o, team.quantities);
+                                  return (
+                                    <button
+                                      key={o.id}
+                                      className="option-row"
+                                      onClick={() => open({ kind: "option", item: o })}
+                                    >
+                                      <span>
+                                        {team.code}{" "}
+                                        <small>
+                                          {o.owned
+                                            ? "Owned"
+                                            : `${formatMoney(o.unitMinor, currency)} / shirt`}
+                                        </small>
+                                      </span>
+                                      <strong>
+                                        {!o.available
+                                          ? "Unavailable"
+                                          : quote.minimumOrderNeedsSizes
+                                            ? "Sizes needed for extras"
+                                            : !quote.eligible
+                                              ? "Check stock"
+                                              : formatMoney(quote.totalMinor, currency)}{" "}
+                                        <span aria-hidden="true">↗</span>
+                                      </strong>
+                                    </button>
+                                  );
+                                })}
+                              {!data.options.some((o) => o.designId === d.id) && (
+                                <p className="muted">Not assigned to a team yet.</p>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                    </div>
+                    {!data.designs.length && (
+                      <Empty
+                        text="Add a design, then assign it to a team."
+                        action="Add a design"
+                        onClick={() => open({ kind: "design" })}
+                      />
+                    )}
+                  </>
+                )}
+                {(tab === "previews" || tab === "reviews" || tab === "plan") && (
+                  <PipelineViews
+                    key={`${event.id}:${tab}:${assistantFocus.teamId || ""}:${assistantFocus.designId || ""}:${assistantFocus.fixtureId || ""}`}
+                    data={data}
+                    focus={assistantFocus}
+                    view={tab}
+                    onData={setData}
+                    pollingEnabled={!editor && !busy && !csvImport}
+                    onOrderBrief={() => setTab("brief")}
+                  />
+                )}
+                {tab === "brief" && <OrderBriefView key={event.id} data={data} onData={setData} />}
+                {tab === "settings" && (
+                  <div className="settings-grid">
+                    <DataRecoveryView pending={data.pipeline?.cleanupPending} />
+                    <section className="settings-panel">
+                      <span className="eyebrow">EVENT DETAILS</span>
+                      <h2>{event.name}</h2>
+                      <dl>
+                        <dt>Order budget</dt>
+                        <dd>{formatMoney(event.budgetMinor, currency)}</dd>
+                        <dt>Event date</dt>
+                        <dd>{event.eventDate || "Not set"}</dd>
+                        <dt>Choice rule</dt>
+                        <dd>One fixed shirt per team</dd>
+                        <dt>Saved revision</dt>
+                        <dd>{event.revision}</dd>
+                        <dt>Data location</dt>
+                        <dd>This computer · SQLite</dd>
+                      </dl>
+                      <button className="button secondary" onClick={() => open({ kind: "event" })}>
+                        Edit event details
+                      </button>
+                    </section>
+                    <section className="settings-panel">
+                      <span className="eyebrow">YOUCAM CONNECTION</span>
+                      <h2>
+                        {data.integration.configured ? "Key configured." : "Key not configured."}
+                      </h2>
+                      <p>
+                        {data.integration.configured
+                          ? "The server can read a local key. Preview Studio queues real Clothes V3 tasks through the local worker."
+                          : "Add YOUCAM_API_KEY to your ignored .env.local file to prepare the feasibility test."}
+                      </p>
+                      <div className="status-tag">
+                        {data.integration.liveValidated
+                          ? "Live smoke test passed"
+                          : "Live validation pending"}
+                      </div>
+                      <p className="small-copy">
+                        Estimated units reserved: {data.integration.estimatedUnits}. Account billing
+                        is not automatically reconciled. The local worker must be running for
+                        generation and planning.
+                      </p>
+                    </section>
+                    <section className="settings-panel full-span">
+                      <span className="eyebrow">RECENT CHANGES</span>
+                      <h2>Workspace history</h2>
+                      <ul className="activity-list">
+                        {data.activity.map((a) => (
+                          <li key={a.id}>
+                            <span>{activityLabel(a.action)}</span>
+                            <time dateTime={a.createdAt}>
+                              {new Date(a.createdAt).toLocaleString("en-GB")}
+                            </time>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                    <section className="settings-panel full-span">
+                      <h3>Archive this event</h3>
+                      <p>
+                        Hide the event from the active list and keep its saved history. No photos or
+                        records are deleted.
+                      </p>
+                      <button
+                        className="button secondary danger"
+                        disabled={busy}
+                        onClick={() => {
+                          if (
+                            window.confirm(`Archive ${event.name}? Its saved records will be kept.`)
+                          )
+                            void mutate("archiveEvent");
+                        }}
+                      >
+                        Archive event
+                      </button>
+                    </section>
+                  </div>
+                )}
+                {tab !== "overview" && tab !== "settings" && (
+                  <nav className="flow-continue" aria-label="Continue tournament setup">
+                    <button className="text-button" onClick={() => navigate("overview")}>
+                      ← Tournament overview
+                    </button>
+                    <button className="button secondary small" onClick={continueJourney}>
+                      {journey.next.button} →
+                    </button>
+                  </nav>
+                )}
+                <footer className="workspace-footer">
+                  <span>MatchClear / Organizer workspace</span>
+                  <span>
+                    Appearance review supports a decision. It does not certify physical kit
+                    visibility.
+                  </span>
+                </footer>
+              </>
+            )}
+          </main>
+          <AssistantDock
+            key={event?.id || "empty"}
+            data={data}
+            open={assistantOpen}
+            modal={assistantModal}
+            section={tab as OrganizerSection}
+            pollingEnabled={!editor && !busy && !csvImport}
+            onClose={closeAssistant}
+            onContinue={continueJourney}
+            onNavigate={navigate}
+            onData={setData}
+          />
+        </div>
       </div>
+      {!assistantOpen && (
+        <button
+          className="assistant-bubble"
+          aria-label="Open MatchClear assistant"
+          aria-expanded={false}
+          aria-controls="tournament-assistant"
+          onClick={() => setAssistantOpen(true)}
+        >
+          <span className="assistant-bubble-mark" aria-hidden="true">
+            <img src="/mascots/assistant-robot.webp" width="79" height="104" alt="" />
+          </span>
+          <span className="assistant-bubble-copy">
+            MatchClear assistant<small>{journey.next.button}</small>
+          </span>
+        </button>
+      )}
+      {assistantOpen && assistantModal && (
+        <button className="assistant-scrim" aria-label="Close assistant" onClick={closeAssistant} />
+      )}
       {csvImport && (
         <CsvImport
           kind={csvImport}
@@ -806,7 +750,7 @@ function SectionTitle({
     <div className="section-title">
       <div>
         <h2>{title}</h2>
-        <p>{subtitle}</p>
+        {subtitle && <p>{subtitle}</p>}
       </div>
       <button className="text-button" onClick={onClick}>
         {action} <span aria-hidden="true">→</span>

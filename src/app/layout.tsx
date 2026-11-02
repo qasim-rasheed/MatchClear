@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "@/components/pipeline.css";
+import "@/components/organizer.css";
 export const metadata: Metadata = {
   title: "MatchClear — Tournament workspace",
   description: "Plan team shirts and review opposing combinations before you order.",

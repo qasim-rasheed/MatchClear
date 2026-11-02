@@ -1,0 +1,6 @@
+# Retailer product photographs are available in this local checkout only.
+# Source links are provided; redistribution rights have not been established.
+shirts/*.jpg
+shirts/*.jpeg
+shirts/*.png
+shirts/*.webp

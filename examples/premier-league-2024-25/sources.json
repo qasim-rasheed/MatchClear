@@ -1,0 +1,113 @@
+{
+  "league": "English Premier League",
+  "season": "2024/25",
+  "scope": "Four real fixtures; not the complete league or an official kit submission.",
+  "fixtures": [
+    {
+      "date": "2024-10-27",
+      "home": "arsenal",
+      "away": "liverpool",
+      "source": "https://www.premierleague.com/en/news/4156035"
+    },
+    {
+      "date": "2024-11-10",
+      "home": "chelsea",
+      "away": "arsenal",
+      "source": "https://www.premierleague.com/en/news/4165946"
+    },
+    {
+      "date": "2024-12-08",
+      "home": "tottenham",
+      "away": "chelsea",
+      "source": "https://www.chelseafc.com/en/match/tottenham-hotspur-vs-chelsea-english-premier-league-2024-12-08?tab=match-news"
+    },
+    {
+      "date": "2024-12-22",
+      "home": "tottenham",
+      "away": "liverpool",
+      "source": "https://www.liverpoolfc.com/news/liverpool-spend-christmas-four-points-clear-top-after-scoring-six-win-over-tottenham/"
+    }
+  ],
+  "shirts": [
+    {
+      "club": "arsenal",
+      "kind": "home",
+      "colour": "Red / white",
+      "hex": "#c90024",
+      "secondary": "#ffffff",
+      "pattern": "panel",
+      "file": "arsenal-home-2024-25.jpg",
+      "source": "https://www.subside.com.au/adidas-arsenal-home-authentic-shirt-2024-2025"
+    },
+    {
+      "club": "liverpool",
+      "kind": "home",
+      "colour": "Red / yellow",
+      "hex": "#c8102e",
+      "secondary": "#f0d34a",
+      "pattern": "stripe",
+      "file": "liverpool-home-2024-25.jpg",
+      "source": "https://www.subsidesports.com/uk/nike-liverpool-home-shirt-2024-2025"
+    },
+    {
+      "club": "liverpool",
+      "kind": "away",
+      "colour": "Night forest / teal",
+      "hex": "#172522",
+      "secondary": "#42d7c2",
+      "pattern": "solid",
+      "file": "liverpool-away-2024-25.jpg",
+      "source": "https://www.liverpoolfc.com/news/take-closer-look-liverpools-new-nike-away-kit"
+    },
+    {
+      "club": "chelsea",
+      "kind": "home",
+      "colour": "Blue / orange",
+      "hex": "#1747b0",
+      "secondary": "#ed692f",
+      "pattern": "solid",
+      "file": "chelsea-home-2024-25.jpg",
+      "source": "https://store.chelseafc.com/en/chelsea-nike-home-stadium-shirt-2024-25/p-130022318301452826+z-8-3421640581"
+    },
+    {
+      "club": "tottenham",
+      "kind": "home",
+      "colour": "White / navy",
+      "hex": "#eeeeef",
+      "secondary": "#12254b",
+      "pattern": "panel",
+      "file": "tottenham-home-2024-25.jpg",
+      "source": "https://www.subside.com.au/nike-tottenham-home-shirt-2024-2025"
+    }
+  ],
+  "people": [
+    {
+      "file": "people/adult-model-01.jpg",
+      "photographer": "Monstera Production",
+      "source": "https://www.pexels.com/photo/black-man-holding-t-shirt-standing-against-white-background-6311639/",
+      "license": "https://www.pexels.com/license/",
+      "note": "Stock adult, not an actual club player; previously tested with two plain shirts."
+    },
+    {
+      "file": "people/adult-model-02.jpg",
+      "photographer": "Timur Weber",
+      "source": "https://www.pexels.com/photo/a-man-standing-beside-the-white-wall-9127679/",
+      "license": "https://www.pexels.com/license/",
+      "note": "Stock adult, not an actual club player; this pose has not been provider-tested."
+    }
+  ],
+  "assumptions": {
+    "demandPerClub": {
+      "XS": 0,
+      "S": 2,
+      "M": 4,
+      "L": 2,
+      "XL": 0,
+      "XXL": 0
+    },
+    "budgetGBP": 300,
+    "homeOptions": "Assumed owned inventory for practice only",
+    "liverpoolAway": "Illustrative replenishment: 8 shirts at GBP 35; not a current retail offer or actual club procurement data",
+    "images": "Club product images retain source rights; downloaded locally at the user's request. No redistribution/public-demo permission is asserted."
+  }
+}

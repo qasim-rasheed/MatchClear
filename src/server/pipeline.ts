@@ -10,6 +10,7 @@ import {
   pipelineCommand,
   previewKey,
   TRANSFORM_VERSION,
+  REGION_VERSION,
   type ReviewEvidence,
 } from "@/domain/pipeline";
 import {
@@ -104,8 +105,18 @@ export function readPipelineState(ctx: DatabaseContext, eventId: string) {
     workerMode:
       ctx.db.select().from(s.runtimeSettings).where(eq(s.runtimeSettings.key, "workerMode")).get()
         ?.value || "all",
+    workerReviewPolicy:
+      ctx.db
+        .select()
+        .from(s.runtimeSettings)
+        .where(eq(s.runtimeSettings.key, "workerReviewPolicy"))
+        .get()?.value || null,
     unitLimit: Number(process.env.MATCHCLEAR_API_UNIT_LIMIT || 40),
-    cleanupPending: ctx.db.select().from(s.runtimeSettings).all().filter((r) => r.key.startsWith("cleanup:")).length,
+    cleanupPending: ctx.db
+      .select()
+      .from(s.runtimeSettings)
+      .all()
+      .filter((r) => r.key.startsWith("cleanup:")).length,
     plannerLocks: JSON.parse(
       ctx.db
         .select()
@@ -452,7 +463,7 @@ export function applyPipeline(ctx: DatabaseContext, raw: unknown) {
             .update(s.regions)
             .set({
               polygon: cmd.polygon,
-              transformVersion: TRANSFORM_VERSION,
+              transformVersion: REGION_VERSION,
               revision: prior.revision + 1,
             })
             .where(eq(s.regions.id, prior.id))
@@ -464,7 +475,7 @@ export function applyPipeline(ctx: DatabaseContext, raw: unknown) {
               id: crypto.randomUUID(),
               previewId: cmd.previewId,
               polygon: cmd.polygon,
-              transformVersion: TRANSFORM_VERSION,
+              transformVersion: REGION_VERSION,
             })
             .run();
         stalePreviewReviews(ctx, cmd.eventId, [cmd.previewId], "The marked shirt area changed.");
@@ -529,6 +540,25 @@ export function applyPipeline(ctx: DatabaseContext, raw: unknown) {
           })
           .run();
       } else if (cmd.op === "queuePlan") {
+        const heartbeat = ctx.db
+          .select()
+          .from(s.runtimeSettings)
+          .where(eq(s.runtimeSettings.key, "workerHeartbeat"))
+          .get()?.value;
+        const workerPolicy = ctx.db
+          .select()
+          .from(s.runtimeSettings)
+          .where(eq(s.runtimeSettings.key, "workerReviewPolicy"))
+          .get()?.value;
+        if (
+          heartbeat &&
+          Date.now() - Date.parse(heartbeat) < 20_000 &&
+          workerPolicy !== TRANSFORM_VERSION
+        )
+          throw new WorkspaceError(
+            "Your comparisons are saved. The background planner is running an older version. Restart it with npm run worker, then find a new plan.",
+            503,
+          );
         for (const mapping of [cmd.locks, cmd.baseline])
           for (const [teamId, optionId] of Object.entries(mapping))
             if (
@@ -547,6 +577,14 @@ export function applyPipeline(ctx: DatabaseContext, raw: unknown) {
               throw new WorkspaceError(
                 "A lock or baseline refers to an option outside this event/team.",
               );
+        ctx.db
+          .insert(s.runtimeSettings)
+          .values({ key: `plannerPrefs:${cmd.eventId}`, value: JSON.stringify(cmd.locks) })
+          .onConflictDoUpdate({
+            target: s.runtimeSettings.key,
+            set: { value: JSON.stringify(cmd.locks) },
+          })
+          .run();
         entityId = crypto.randomUUID();
         // The worker verifies this exact input revision before publishing a result.
         ctx.db
@@ -560,6 +598,7 @@ export function applyPipeline(ctx: DatabaseContext, raw: unknown) {
               locks: cmd.locks,
               baseline: cmd.baseline,
               eventRevision: cmd.revision + 1,
+              reviewPolicyVersion: TRANSFORM_VERSION,
             },
             createdAt: now,
             updatedAt: now,

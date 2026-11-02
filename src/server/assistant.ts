@@ -126,7 +126,7 @@ export async function generateDraft(text: string, context: TextContext): Promise
     throw failure;
   }
 }
-function reserveRequest(ctx: DatabaseContext, eventId: string) {
+export function reserveRequest(ctx: DatabaseContext, eventId: string) {
   // Reserve a request slot before awaiting the provider; no automatic retries.
   const key = `assistant-last:${eventId}`;
   ctx.sqlite

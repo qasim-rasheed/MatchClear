@@ -1,7 +1,12 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { DatabaseContext } from "./db";
 import * as s from "./db/schema";
-import { TRANSFORM_VERSION, type ReviewEvidence } from "@/domain/pipeline";
+import {
+  TRANSFORM_VERSION,
+  supportedRegion,
+  viewModes,
+  type ReviewEvidence,
+} from "@/domain/pipeline";
 import { WorkspaceError } from "./workspace";
 
 export function eventAtRevision(ctx: DatabaseContext, eventId: string, revision: number) {
@@ -100,7 +105,7 @@ export function usablePreview(
     .where(eq(s.regions.previewId, preview.id))
     .orderBy(desc(s.regions.revision))
     .get();
-  if (requireRegion && (!region || region.transformVersion !== TRANSFORM_VERSION)) return null;
+  if (requireRegion && !supportedRegion(region)) return null;
   return { preview, design, team, region };
 }
 export function currentReview(ctx: DatabaseContext, review: typeof s.reviews.$inferSelect) {
@@ -108,6 +113,8 @@ export function currentReview(ctx: DatabaseContext, review: typeof s.reviews.$in
   if (
     review.status === "stale" ||
     e.transformVersion !== TRANSFORM_VERSION ||
+    !Array.isArray(e.viewedModes) ||
+    !viewModes.every((m) => e.viewedModes!.includes(m)) ||
     !e.previewA ||
     !e.previewB
   )

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "kind": "synthetic-software-benchmark",
+  "seed": 2193,
+  "cases": 500,
+  "teamsPerCase": 4,
+  "optionsPerTeam": 2,
+  "fixturesPerCase": 4,
+  "matchedIndependentEnumeration": 500,
+  "feasibleCases": 207,
+  "infeasibleCases": 293,
+  "invalidSelections": 0,
+  "medianSolverMs": 0,
+  "maxSolverMs": 19,
+  "failedCaseIndexes": [],
+  "limitations": "Seeded synthetic approvals, inventory and costs. Tests planner correctness and tie-breaking, not garment accuracy, user benefit, accessibility, or money saved by real organizers."
+}

@@ -97,11 +97,17 @@ export function OrderBriefView({ data, onData }: Props) {
   return (
     <div className="pipeline-workspace">
       <section className="plan-result">
-        <h2>Create a frozen order brief</h2>
-        <p>
-          Confirm a complete plan in Tournament Plan first. The brief preserves its designs,
-          quantities, costs and review notes. It does not place an order.
-        </p>
+        <h2>Order brief</h2>
+        <p>Prepare your confirmed plan for the seller.</p>
+        <details className="screening-info">
+          <summary>About this brief</summary>
+          <p>
+            Confirm a complete plan in Tournament Plan first. The brief preserves its designs,
+            sizes, quantities, costs and review notes. It does not place an order. Garment
+            references are included; generated person previews are included only when selected
+            below.
+          </p>
+        </details>
         {error && (
           <p role="alert" className="error-message">
             {error}
@@ -125,14 +131,11 @@ export function OrderBriefView({ data, onData }: Props) {
                 checked={include}
                 onChange={(e) => setInclude(e.target.checked)}
               />
-              Include generated person previews in this brief
+              Include person previews
             </label>
-            <p className="small-copy">
-              Original garment references are included. Person previews are excluded unless you
-              select this option.
-            </p>
+            <p className="small-copy">Garment photos included. Person previews optional.</p>
             <button className="button" disabled={busy}>
-              {busy ? "Freezing brief…" : "Create order brief"}
+              {busy ? "Saving brief…" : "Create order brief"}
             </button>
           </form>
         ) : (
@@ -143,7 +146,7 @@ export function OrderBriefView({ data, onData }: Props) {
         )}
       </section>
       <section className="plan-result">
-        <h2>Saved order briefs</h2>
+        <h2>Saved briefs</h2>
         {!pipeline.briefs.length && <p>No briefs created yet.</p>}
         {pipeline.briefs.map((b) => {
           const base = `/api/brief?event=${encodeURIComponent(data.event!.id)}&id=${encodeURIComponent(b.id)}`;
@@ -152,18 +155,32 @@ export function OrderBriefView({ data, onData }: Props) {
             <article className="consequence-row" key={b.id}>
               <strong>
                 {b.createdAt}
-                {stale ? " · historical inputs" : ""}
+                {stale ? " · historical" : ""}
               </strong>
               <span>{b.includePlayerPhotos ? "Includes person previews" : "No player photos"}</span>
               <div className="button-row">
-                <a className="button secondary" target="_blank" rel="noreferrer" href={base}>
-                  Open printable brief / PDF
+                <a
+                  className="button secondary"
+                  target="_blank"
+                  rel="noreferrer"
+                  href={base}
+                  aria-label="Open printable brief or save as PDF"
+                >
+                  Print / PDF
                 </a>
-                <a className="button secondary" href={`${base}&format=csv`}>
-                  Download CSV
+                <a
+                  className="button secondary"
+                  href={`${base}&format=csv`}
+                  aria-label="Download order brief CSV"
+                >
+                  CSV
                 </a>
-                <a className="button secondary" href={`${base}&format=json`}>
-                  Download JSON
+                <a
+                  className="button secondary"
+                  href={`${base}&format=json`}
+                  aria-label="Download order brief JSON"
+                >
+                  JSON
                 </a>
               </div>
             </article>

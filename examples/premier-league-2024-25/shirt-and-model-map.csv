@@ -1,0 +1,6 @@
+team,option,shirt_file,person_file,owned,practice_unit_GBP
+Arsenal,home,shirts/arsenal-home-2024-25.jpg,people/adult-model-01.jpg,true,0
+Liverpool,home,shirts/liverpool-home-2024-25.jpg,people/adult-model-01.jpg,true,0
+Liverpool,away,shirts/liverpool-away-2024-25.jpg,people/adult-model-01.jpg,false,35
+Chelsea,home,shirts/chelsea-home-2024-25.jpg,people/adult-model-02.jpg,true,0
+Tottenham Hotspur,home,shirts/tottenham-home-2024-25.jpg,people/adult-model-02.jpg,true,0

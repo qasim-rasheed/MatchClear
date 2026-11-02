@@ -106,7 +106,7 @@ describe("durable previews, evidence and planning", () => {
         reason: "Missing views",
         viewedModes: ["normal"],
       }),
-    ).toThrow("four");
+    ).toThrow("all 8");
   });
   it("resumes a saved running task after a new worker tick without submitting twice", async () => {
     const env = await setup();

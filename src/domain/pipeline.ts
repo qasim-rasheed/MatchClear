@@ -1,7 +1,23 @@
 import { z } from "zod";
 
-export const TRANSFORM_VERSION = "machado2009-srgb-v1";
-export const viewModes = ["normal", "grayscale", "protan", "deutan"] as const;
+export const TRANSFORM_VERSION = "screening-srgb-eight-views-v2";
+export const REGION_VERSION = "shirt-polygon-v1";
+// Polygon geometry did not change when the screening coverage expanded.
+export function supportedRegion(region: { transformVersion: string } | null | undefined) {
+  return Boolean(
+    region && [REGION_VERSION, "machado2009-srgb-v1"].includes(region.transformVersion),
+  );
+}
+export const viewModes = [
+  "normal",
+  "grayscale",
+  "protan",
+  "protanomaly",
+  "deutan",
+  "deuteranomaly",
+  "tritan",
+  "tritanomaly",
+] as const;
 export type ViewMode = (typeof viewModes)[number];
 export type Point = { x: number; y: number };
 const id = z.string().min(1).max(100);
@@ -51,7 +67,7 @@ export const pipelineCommand = z.discriminatedUnion("op", [
       .array(z.enum(viewModes))
       .refine(
         (a) => viewModes.every((m) => a.includes(m)),
-        "Inspect all four view modes before recording a decision.",
+        `Inspect all ${viewModes.length} view modes before recording a decision.`,
       ),
   }),
   z.object({

@@ -2,11 +2,19 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { Workspace } from "@/server/workspace";
 import type { PipelineState } from "@/server/pipeline";
-import { viewModes, type Point, type ViewMode } from "@/domain/pipeline";
+import {
+  viewModes,
+  supportedRegion,
+  TRANSFORM_VERSION,
+  type Point,
+  type ViewMode,
+} from "@/domain/pipeline";
+import { modeLabels, modeDetails } from "@/lib/vision/modes";
 import { transformPixels } from "@/lib/vision/transforms";
 import type { PlanResult, PlanningInput } from "@/lib/planner/solve";
 import { formatMoney } from "@/domain/validation";
 import { ChoiceConsequences } from "./completion-views";
+import type { OrganizerFocus } from "@/domain/assistant-agent";
 
 type Preview = PipelineState["previews"][number];
 type Props = {
@@ -15,19 +23,14 @@ type Props = {
   onData: (value: Workspace) => void;
   pollingEnabled: boolean;
   onOrderBrief?: () => void;
+  focus?: OrganizerFocus;
 };
 export function assetUrl(eventId: string, id: string) {
   return `/api/assets?event=${encodeURIComponent(eventId)}&id=${encodeURIComponent(id)}`;
 }
-const modeLabels: Record<ViewMode, string> = {
-  normal: "Ordinary",
-  grayscale: "Grayscale",
-  protan: "Protan model",
-  deutan: "Deutan model",
-};
 const active = ["queued", "uploading", "submitting", "running"];
 
-export function PipelineViews({ data, view, onData, pollingEnabled, onOrderBrief }: Props) {
+export function PipelineViews({ data, view, onData, pollingEnabled, onOrderBrief, focus }: Props) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -126,32 +129,55 @@ export function PipelineViews({ data, view, onData, pollingEnabled, onOrderBrief
   }
   const workerRecent =
     pipeline.workerHeartbeat && Date.now() - Date.parse(pipeline.workerHeartbeat) < 20_000;
+  const outdatedWorker = workerRecent && pipeline.workerReviewPolicy !== TRANSFORM_VERSION;
   return (
     <div className="pipeline-workspace">
-      <div className="pipeline-banner">
-        <span>
-          <strong>
+      {outdatedWorker && (
+        <p className="error-message" role="status">
+          Your comparisons are saved. The background planner needs a restart before it can use them.
+          Stop the old worker, then run <code>npm run worker</code>.
+        </p>
+      )}
+      {hasWork && (
+        <p className="work-status" role="status">
+          {outdatedWorker
+            ? "The background planner needs a restart. Your comparisons are saved."
+            : workerRecent
+              ? "Your saved jobs are being processed."
+              : "Work is waiting. Start the background worker to continue."}
+        </p>
+      )}
+      <details className="pipeline-details">
+        <summary>Background activity & credits</summary>
+        <div className="pipeline-banner">
+          <span>
+            <strong>
+              {workerRecent
+                ? pipeline.workerMode === "plans-only"
+                  ? "Planning worker connected"
+                  : pipeline.workerMode === "restricted"
+                    ? "Restricted test worker connected"
+                    : "Worker connected"
+                : hasWork
+                  ? "Worker needed for queued jobs"
+                  : "Saved results available"}
+            </strong>{" "}
+            ·{" "}
             {workerRecent
               ? pipeline.workerMode === "plans-only"
-                ? "Planning worker connected"
+                ? "Planning jobs only; preview jobs remain queued."
                 : pipeline.workerMode === "restricted"
-                  ? "Restricted test worker connected"
-                  : "Worker connected"
-              : "Worker not recently seen"}
-          </strong>{" "}
-          ·{" "}
-          {workerRecent
-            ? pipeline.workerMode === "plans-only"
-              ? "Planning jobs only; preview jobs remain queued."
-              : pipeline.workerMode === "restricted"
-                ? "Only specifically allowed test jobs can run."
-                : "Jobs continue when you leave this screen."
-            : "Run npm run worker in another terminal to process jobs."}
-        </span>
-        <span>
-          {data.integration.estimatedUnits} / {pipeline.unitLimit} estimated units reserved
-        </span>
-      </div>
+                  ? "Only specifically allowed test jobs can run."
+                  : "Jobs continue when you leave this screen."
+              : hasWork
+                ? "Run npm run worker in another terminal to process jobs."
+                : "No queued work for this event. Start the worker when generating or planning again."}
+          </span>
+          <span>
+            {data.integration.estimatedUnits} / {pipeline.unitLimit} estimated units reserved
+          </span>
+        </div>
+      </details>
       {error && (
         <div role="alert" className="error-message">
           {error}
@@ -181,14 +207,22 @@ export function PipelineViews({ data, view, onData, pollingEnabled, onOrderBrief
         </p>
       )}
       {view === "previews" && (
-        <PreviewStudio data={data} busy={busy} command={command} upload={upload} />
+        <PreviewStudio data={data} busy={busy} command={command} upload={upload} focus={focus} />
       )}
-      {view === "reviews" && <MatchupReview data={data} busy={busy} command={command} />}
+      {view === "reviews" && (
+        <MatchupReview data={data} busy={busy} command={command} focus={focus} />
+      )}
       {view === "plan" && (
-        <PlanView data={data} busy={busy} command={command} onOrderBrief={onOrderBrief} />
+        <PlanView
+          key={JSON.stringify(pipeline.plannerLocks)}
+          data={data}
+          busy={busy}
+          command={command}
+          onOrderBrief={onOrderBrief}
+        />
       )}
       <details className="job-history">
-        <summary>Saved jobs and recovery ({pipeline.jobs.length})</summary>
+        <summary>Job history & recovery ({pipeline.jobs.length})</summary>
         <p className="small-copy">
           Cancelling locally cannot undo a provider submission or guarantee a refund. An uncertain
           submission is never automatically repeated.
@@ -305,11 +339,16 @@ function PreviewStudio({
   busy,
   command,
   upload,
-}: { data: Workspace; upload: (form: FormData) => Promise<boolean> } & Actions) {
+  focus,
+}: {
+  data: Workspace;
+  upload: (form: FormData) => Promise<boolean>;
+  focus?: OrganizerFocus;
+} & Actions) {
   const event = data.event!,
     pipeline = data.pipeline!;
-  const [teamId, setTeamId] = useState(data.teams[0]?.id || "");
-  const [designId, setDesignId] = useState("");
+  const [teamId, setTeamId] = useState(focus?.teamId || data.teams[0]?.id || "");
+  const [designId, setDesignId] = useState(focus?.designId || "");
   const [consent, setConsent] = useState(false),
     [retry, setRetry] = useState(false);
   const [deleteId, setDeleteId] = useState("");
@@ -365,79 +404,102 @@ function PreviewStudio({
           </select>
         </label>
       </div>
-      <div className="photo-grid">
-        <PhotoForm
-          key={`person-${team.id}`}
-          kind="person"
-          targetId={team.id}
-          label="1. The person"
-          assetId={personAsset?.id}
-          eventId={event.id}
-          busy={busy}
-          upload={upload}
-        />
-        {design && (
+      <details
+        key={`${team.id}:${design?.id}:sources`}
+        className="source-photo-inputs"
+        open={!personAsset || !refAsset}
+      >
+        <summary>
+          {!personAsset || !refAsset ? "Add your two photos" : "Change source photos"}
+        </summary>
+        <div className="photo-grid">
           <PhotoForm
-            key={`reference-${design.id}`}
-            kind="reference"
-            targetId={design.id}
-            label="2. The actual shirt"
-            assetId={refAsset?.id}
+            key={`person-${team.id}`}
+            kind="person"
+            targetId={team.id}
+            label="1. The person"
+            assetId={personAsset?.id}
             eventId={event.id}
             busy={busy}
             upload={upload}
           />
-        )}
-      </div>
-      <section className="generation-panel">
-        <h2>3. Generate an appearance preview</h2>
-        <p>
-          Each new V3 render reserves an estimated 2 units. Matching current jobs or results are
-          reused; no duplicate render is submitted for them.
-        </p>
-        <label className="checkbox">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-          I understand the selected person and garment photos will be sent to YouCam for this task.
-        </label>
-        <label className="checkbox">
-          <input type="checkbox" checked={retry} onChange={(e) => setRetry(e.target.checked)} />
-          Explicitly allow a new attempt after a confirmed failure or cancellation (another
-          estimated 2 units).
-        </label>
-        <div className="button-row">
-          <button
-            className="button"
-            disabled={busy || !consent || !personAsset || !refAsset || !design}
-            onClick={() =>
-              void command("queuePreviews", {
-                consentConfirmed: true,
-                items: [{ teamId: team.id, designId: design!.id }],
-                retryFailed: retry,
-              })
-            }
-          >
-            Generate selected preview · up to 2 units
-          </button>
-          <button
-            className="button secondary"
-            disabled={busy || !consent || !ready.length || ready.length > 8}
-            onClick={() =>
-              void command("queuePreviews", {
-                consentConfirmed: true,
-                items: ready.map((o) => ({ teamId: o.teamId, designId: o.designId })),
-                retryFailed: retry,
-              })
-            }
-          >
-            Queue ready options · up to {ready.length * 2} units
-          </button>
+          {design && (
+            <PhotoForm
+              key={`reference-${design.id}`}
+              kind="reference"
+              targetId={design.id}
+              label="2. The actual shirt"
+              assetId={refAsset?.id}
+              eventId={event.id}
+              busy={busy}
+              upload={upload}
+            />
+          )}
         </div>
-      </section>
+      </details>
+      <details
+        key={`${team.id}:${design?.id}:generate`}
+        className="preview-generation"
+        open={!current?.outputAssetId}
+      >
+        <summary>
+          {current?.outputAssetId ? "Generate another preview" : "Create the preview"}
+        </summary>
+        <section className="generation-panel">
+          <h2>Preview this shirt on a player</h2>
+          <p>
+            Each new V3 render reserves an estimated 2 units. Matching current jobs or results are
+            reused; no duplicate render is submitted for them.
+          </p>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+            />
+            I understand the selected person and garment photos will be sent to YouCam for this
+            task.
+          </label>
+          <label className="checkbox">
+            <input type="checkbox" checked={retry} onChange={(e) => setRetry(e.target.checked)} />
+            Explicitly allow a new attempt after a confirmed failure or cancellation (another
+            estimated 2 units).
+          </label>
+          <div className="button-row">
+            <button
+              className="button"
+              disabled={busy || !consent || !personAsset || !refAsset || !design}
+              onClick={() =>
+                void command("queuePreviews", {
+                  consentConfirmed: true,
+                  items: [{ teamId: team.id, designId: design!.id }],
+                  retryFailed: retry,
+                })
+              }
+            >
+              Generate selected preview · up to 2 units
+            </button>
+            <button
+              className="button secondary"
+              disabled={busy || !consent || !ready.length || ready.length > 8}
+              onClick={() =>
+                void command("queuePreviews", {
+                  consentConfirmed: true,
+                  items: ready.map((o) => ({ teamId: o.teamId, designId: o.designId })),
+                  retryFailed: retry,
+                })
+              }
+            >
+              Queue ready options · up to {ready.length * 2} units
+            </button>
+          </div>
+        </section>
+      </details>
       {current ? (
         <section className="preview-evidence">
           <div className="section-title">
             <div>
-              <h2>Current render</h2>
+              <h2>Your preview</h2>
               <p>
                 {current.stale ? "Outdated" : current.status.replaceAll("-", " ")} · appearance{" "}
                 {current.acceptance}
@@ -452,21 +514,21 @@ function PreviewStudio({
                     src={assetUrl(event.id, current.referenceAssetId)}
                     alt="Original garment reference"
                   />
-                  <figcaption>Original garment reference</figcaption>
+                  <figcaption>Shirt photo</figcaption>
                 </figure>
                 <figure>
                   <img
                     src={assetUrl(event.id, current.personAssetId)}
                     alt="Original person photo"
                   />
-                  <figcaption>Original person photo</figcaption>
+                  <figcaption>Player photo</figcaption>
                 </figure>
                 <figure>
                   <img
                     src={assetUrl(event.id, current.outputAssetId)}
                     alt="YouCam generated appearance preview"
                   />
-                  <figcaption>Genuine YouCam V3 output</figcaption>
+                  <figcaption>YouCam preview</figcaption>
                 </figure>
               </div>
               <form
@@ -483,9 +545,9 @@ function PreviewStudio({
                   });
                 }}
               >
-                <h3>Inspect the garment against its source</h3>
+                <h3>Does the preview represent the shirt?</h3>
                 <p>
-                  Check major colour blocks, pattern, sleeves and invented details. Accepting
+                  Check the colours, pattern and sleeves against the shirt photo. Accepting
                   appearance is separate from approving an opposing combination.
                 </p>
                 <div className="form-row">
@@ -600,7 +662,7 @@ function RegionEditor({
         <h3>Mark the shirt, then confirm the outline</h3>
         <p>
           Click around the shirt in order, using at least three points. Keep the face and background
-          outside. You can edit normalized coordinates with a keyboard.
+          outside. This keeps the comparison focused on the fabric.
         </p>
         <div className="button-row">
           <button
@@ -629,34 +691,37 @@ function RegionEditor({
             Clear outline
           </button>
         </div>
-        <div className="point-inputs">
-          {points.map((p, i) => (
-            <div key={i}>
-              <span>Point {i + 1}</span>
-              {(["x", "y"] as const).map((axis) => (
-                <label key={axis}>
-                  {axis}
-                  <input
-                    aria-label={`Point ${i + 1} ${axis}`}
-                    type="number"
-                    min="0"
-                    max="1"
-                    step=".01"
-                    value={p[axis]}
-                    onChange={(e) => {
-                      setPoints((old) =>
-                        old.map((point, index) =>
-                          index === i ? { ...point, [axis]: Number(e.target.value) } : point,
-                        ),
-                      );
-                      setConfirmed(false);
-                    }}
-                  />
-                </label>
-              ))}
-            </div>
-          ))}
-        </div>
+        <details>
+          <summary>Edit outline points</summary>
+          <div className="point-inputs">
+            {points.map((p, i) => (
+              <div key={i}>
+                <span>Point {i + 1}</span>
+                {(["x", "y"] as const).map((axis) => (
+                  <label key={axis}>
+                    {axis}
+                    <input
+                      aria-label={`Point ${i + 1} ${axis}`}
+                      type="number"
+                      min="0"
+                      max="1"
+                      step=".01"
+                      value={p[axis]}
+                      onChange={(e) => {
+                        setPoints((old) =>
+                          old.map((point, index) =>
+                            index === i ? { ...point, [axis]: Number(e.target.value) } : point,
+                          ),
+                        );
+                        setConfirmed(false);
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+        </details>
         <label className="checkbox">
           <input
             type="checkbox"
@@ -815,10 +880,15 @@ function ScreenImage({
   );
 }
 
-function MatchupReview({ data, busy, command }: { data: Workspace } & Actions) {
+function MatchupReview({
+  data,
+  busy,
+  command,
+  focus,
+}: { data: Workspace; focus?: OrganizerFocus } & Actions) {
   const event = data.event!,
     pipeline = data.pipeline!;
-  const [fixtureId, setFixtureId] = useState(data.fixtures[0]?.id || "");
+  const [fixtureId, setFixtureId] = useState(focus?.fixtureId || data.fixtures[0]?.id || "");
   const [aId, setAId] = useState("");
   const [bId, setBId] = useState("");
   const [mode, setMode] = useState<ViewMode>("normal"),
@@ -831,11 +901,12 @@ function MatchupReview({ data, busy, command }: { data: Workspace } & Actions) {
     b = bOptions.find((o) => o.id === bId) || bOptions[0];
   const find = (teamId?: string, designId?: string) =>
     pipeline.previews.find(
-      (p) => p.teamId === teamId && p.designId === designId && p.usable && p.region,
+      (p) =>
+        p.teamId === teamId && p.designId === designId && p.usable && supportedRegion(p.region),
     );
   const pa = find(fixture?.teamA, a?.designId),
     pb = find(fixture?.teamB, b?.designId);
-  const evidenceKey = `${fixture?.id}:${a?.id}:${b?.id}:${pa?.id}:${pa?.revision}:${pa?.region?.revision}:${pb?.id}:${pb?.revision}:${pb?.region?.revision}`;
+  const evidenceKey = `${TRANSFORM_VERSION}:${fixture?.id}:${a?.id}:${b?.id}:${pa?.id}:${pa?.revision}:${pa?.region?.revision}:${pb?.id}:${pb?.revision}:${pb?.region?.revision}`;
   const [seen, setSeen] = useState<Record<string, string[]>>({});
   const mark = useCallback(
     (side: string) =>
@@ -895,9 +966,8 @@ function MatchupReview({ data, busy, command }: { data: Workspace } & Actions) {
         ))}
       </div>
       <p className="form-note">
-        These are modeled screen views of generated images. They do not certify physical colours or
-        on-field visibility. Check the original product references too; choose inconclusive when
-        evidence is unreliable.
+        Compare the previews with the original garments. Choose Inconclusive if the evidence is
+        unreliable.
       </p>
       {pa && pb ? (
         <>
@@ -913,6 +983,38 @@ function MatchupReview({ data, busy, command }: { data: Workspace } & Actions) {
               </button>
             ))}
           </div>
+          <p className="mode-hint">{modeDetails[mode].hint}</p>
+          <details className="screening-info">
+            <summary>About these views</summary>
+            <dl>
+              {viewModes.map((m) => (
+                <div key={m}>
+                  <dt>{modeDetails[m].name}</dt>
+                  <dd>{modeDetails[m].explanation}</dd>
+                </div>
+              ))}
+            </dl>
+            <p>
+              These are screening aids, not a certification of physical colours or field visibility.
+              Partial-loss examples use model setting 0.5, not “50% vision”. Grayscale checks
+              colour-free contrast; it does not reproduce every form of monochromacy. These views
+              cover major red–green and blue–yellow screening categories, not every severity,
+              acquired condition or rare subtype.
+            </p>
+            <a
+              href="https://www.nei.nih.gov/eye-health-information/eye-conditions-and-diseases/color-blindness/types-color-vision-deficiency"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Colour-vision types ↗
+            </a>
+          </details>
+          {records.length > 0 && !records.some((r) => r.current) && (
+            <p className="form-note">
+              Older evidence needs review. Inspect all {viewModes.length} views to record a current
+              decision.
+            </p>
+          )}
           <div className="button-row">
             <label className="checkbox">
               <input
@@ -974,7 +1076,7 @@ function MatchupReview({ data, busy, command }: { data: Workspace } & Actions) {
           >
             <h3>Record your screen-review decision</h3>
             <p>
-              {viewed.length} of 4 image modes loaded on both sides. Inspect each before deciding.
+              {viewed.length} of {viewModes.length} views checked.
             </p>
             <div className="form-row">
               <label className="field">
@@ -998,7 +1100,7 @@ function MatchupReview({ data, busy, command }: { data: Workspace } & Actions) {
               <input type="checkbox" required />I inspected the images and references; this records
               my review, not an automatic accessibility certificate.
             </label>
-            <button className="button" disabled={busy || viewed.length !== 4}>
+            <button className="button" disabled={busy || viewed.length !== viewModes.length}>
               Save human review
             </button>
           </form>
@@ -1050,11 +1152,8 @@ function PlanView({
   return (
     <>
       <section className="plan-inputs">
-        <h2>Choose your starting choices and locks</h2>
-        <p>
-          The worker minimizes recorded order cost across current human-approved combinations.
-          Locks, available quantities and the saved event budget remain hard conditions.
-        </p>
+        <h2>Any shirts that must stay?</h2>
+        <p>Choose the current shirts. Keep a choice fixed only when it cannot change.</p>
         <div className="plan-team-choices">
           {data.teams.map((t) => (
             <div key={t.id}>
@@ -1093,7 +1192,7 @@ function PlanView({
                     })
                   }
                 />
-                Keep this team's choice fixed
+                Keep this shirt
               </label>
             </div>
           ))}
@@ -1108,12 +1207,15 @@ function PlanView({
               })
             }
           >
-            Find a reviewed tournament plan
+            Find a shirt plan
           </button>
           <strong>Budget: {formatMoney(event.budgetMinor, event.currency)}</strong>
         </div>
       </section>
-      <ChoiceConsequences data={data} selection={selected} />
+      <details className="choice-effects">
+        <summary>See affected matches</summary>
+        <ChoiceConsequences data={data} selection={selected} />
+      </details>
       {plan && snapshot ? (
         <section className="plan-result">
           <div className="section-title">
@@ -1265,11 +1367,14 @@ function PlanView({
               </ul>
             </details>
           )}
-          <p className="small-copy">
-            {snapshot.result.nodes.toLocaleString()} search nodes · {snapshot.result.elapsedMs} ms ·
-            input revision {plan.eventRevision}. Costs and stock reflect the supplied records, not
-            live retailer confirmation.
-          </p>
+          <details className="pipeline-details">
+            <summary>How this was calculated</summary>
+            <p className="small-copy">
+              {snapshot.result.nodes.toLocaleString()} search nodes · {snapshot.result.elapsedMs} ms
+              · input revision {plan.eventRevision}. Costs and stock reflect the supplied records,
+              not live retailer confirmation.
+            </p>
+          </details>
           {snapshot.result.selection && (
             <div className="fixture-list">
               {snapshot.input.fixtures.map((f) => (

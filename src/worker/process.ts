@@ -10,6 +10,7 @@ import { bumpEvent, currentReview, usablePreview } from "../server/evidence";
 import { solve, type PairDecision, type PlanningInput } from "../lib/planner/solve";
 import { quoteOption } from "../domain/validation";
 import { retryLocalDeletions } from "../server/privacy";
+import { TRANSFORM_VERSION } from "../domain/pipeline";
 
 type RenderClient = Pick<YouCamClient, "upload" | "submit" | "status" | "download">;
 type Payload = {
@@ -19,6 +20,7 @@ type Payload = {
   eventRevision?: number;
   locks?: Record<string, string>;
   baseline?: Record<string, string>;
+  reviewPolicyVersion?: string;
 };
 
 export function planningInput(
@@ -123,6 +125,11 @@ export async function workerTick(
       : "all";
   ctx.db
     .insert(s.runtimeSettings)
+    .values({ key: "workerReviewPolicy", value: TRANSFORM_VERSION })
+    .onConflictDoUpdate({ target: s.runtimeSettings.key, set: { value: TRANSFORM_VERSION } })
+    .run();
+  ctx.db
+    .insert(s.runtimeSettings)
     .values({ key: "workerMode", value: workerMode })
     .onConflictDoUpdate({ target: s.runtimeSettings.key, set: { value: workerMode } })
     .run();
@@ -195,6 +202,15 @@ export async function workerTick(
     return true;
   }
   if (claimed.kind === "plan") {
+    if (payload.reviewPolicyVersion && payload.reviewPolicyVersion !== TRANSFORM_VERSION) {
+      patch({
+        status: "needs-attention",
+        errorCode: "WORKER_POLICY_CHANGED",
+        leaseOwner: null,
+        leaseUntil: null,
+      });
+      return true;
+    }
     const event = ctx.db.select().from(s.events).where(eq(s.events.id, payload.eventId!)).get();
     if (!event || event.archived || event.revision !== payload.eventRevision) {
       patch({

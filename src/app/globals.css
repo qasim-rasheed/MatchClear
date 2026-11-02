@@ -58,6 +58,7 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 main:focus-visible {
   outline: 3px solid #426e59;
   outline-offset: 4px;
@@ -107,6 +108,7 @@ select {
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
 }
 .brand {
   display: flex;

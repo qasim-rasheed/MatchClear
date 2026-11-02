@@ -228,13 +228,15 @@
   min-width: 45px;
 }
 .mode-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
 }
 .mode-controls .button {
   font-size: 12px;
+  justify-content: center;
 }
+@media (max-width:700px) { .mode-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .comparison-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -273,6 +275,48 @@
 }
 .comparison-grid summary {
   cursor: pointer;
+}
+.mode-hint {
+  color: #52624e;
+  font-size: 12px;
+  margin-top: -10px;
+}
+.screening-info {
+  font-size: 12px;
+  color: #53634f;
+}
+.screening-info summary {
+  cursor: pointer;
+  width: fit-content;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.screening-info dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 25px;
+  margin: 18px 0;
+}
+.screening-info dt {
+  color: #263c2e;
+  font-weight: 600;
+}
+.screening-info dd {
+  margin: 5px 0 0;
+  line-height: 1.75;
+}
+.screening-info p {
+  max-width: 78ch;
+  line-height: 1.75;
+  margin: 12px 0;
+}
+.screening-info a {
+  text-decoration: underline;
+}
+@media (max-width: 700px) {
+  .screening-info dl {
+    grid-template-columns: 1fr;
+  }
 }
 .review-decision {
   display: flex;
@@ -368,6 +412,20 @@
   margin-top: 6px;
   line-height: 1.5;
   color: #53634f;
+}
+.progress-description {
+  color: #53634f;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 13px 0 4px;
+}
+.setup-panel h2 {
+  text-wrap: balance;
+}
+.summary-strip,
+.plan-cost,
+.fixture-row {
+  font-variant-numeric: tabular-nums;
 }
 .plan-team-choices .checkbox {
   margin-top: 10px;

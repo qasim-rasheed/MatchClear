@@ -11,10 +11,12 @@
     "test": "vitest run",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/database.ts migrate",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/database.ts seed",
-    "worker": "tsx --env-file-if-exists=.env.local src/worker/index.ts",
+    "worker": "tsx watch --env-file-if-exists=.env.local src/worker/index.ts",
     "youcam:check": "tsx --env-file-if-exists=.env.local scripts/youcam-spike.ts",
     "test:e2e": "playwright test",
     "assistant:smoke": "tsx --env-file-if-exists=.env.local scripts/openrouter-smoke.ts",
+    "evidence:benchmark": "tsx scripts/planner-benchmark.ts",
+    "demo:video": "tsx scripts/build-demo-video.ts",
     "data:backup": "tsx --env-file-if-exists=.env.local scripts/data-backup.ts backup",
     "data:restore": "tsx --env-file-if-exists=.env.local scripts/data-backup.ts restore"
   },
