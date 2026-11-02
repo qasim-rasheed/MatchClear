@@ -105,6 +105,38 @@ export function readPipelineState(ctx: DatabaseContext, eventId: string) {
       ctx.db.select().from(s.runtimeSettings).where(eq(s.runtimeSettings.key, "workerMode")).get()
         ?.value || "all",
     unitLimit: Number(process.env.MATCHCLEAR_API_UNIT_LIMIT || 40),
+    cleanupPending: ctx.db.select().from(s.runtimeSettings).all().filter((r) => r.key.startsWith("cleanup:")).length,
+    plannerLocks: JSON.parse(
+      ctx.db
+        .select()
+        .from(s.runtimeSettings)
+        .where(eq(s.runtimeSettings.key, `plannerPrefs:${eventId}`))
+        .get()?.value || "{}",
+    ) as Record<string, string>,
+    confirmations: ctx.db
+      .select({
+        id: s.confirmations.id,
+        planId: s.confirmations.planId,
+        reviewer: s.confirmations.reviewer,
+        createdAt: s.confirmations.createdAt,
+      })
+      .from(s.confirmations)
+      .where(eq(s.confirmations.eventId, eventId))
+      .all(),
+    briefs: ctx.db
+      .select()
+      .from(s.exportsTable)
+      .orderBy(desc(s.exportsTable.createdAt))
+      .all()
+      .filter((row) => (row.snapshot as { event?: { id?: string } }).event?.id === eventId)
+      .map((row) => ({
+        id: row.id,
+        planId: row.planId,
+        createdAt: row.createdAt,
+        includePlayerPhotos: Boolean(
+          (row.snapshot as { includePlayerPhotos?: boolean }).includePlayerPhotos,
+        ),
+      })),
   };
 }
 export type PipelineState = ReturnType<typeof readPipelineState>;
@@ -635,6 +667,12 @@ export function applyPipeline(ctx: DatabaseContext, raw: unknown) {
         );
         entityId = asset.id;
       }
+      for (const key of cleanup)
+        ctx.db
+          .insert(s.runtimeSettings)
+          .values({ key: `cleanup:${key}`, value: key })
+          .onConflictDoNothing()
+          .run();
       if (changed) bumpEvent(ctx, cmd.eventId, cmd.op, entityId);
       return { eventId: cmd.eventId, cleanup };
     })

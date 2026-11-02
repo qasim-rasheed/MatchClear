@@ -13,12 +13,17 @@
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/database.ts seed",
     "worker": "tsx --env-file-if-exists=.env.local src/worker/index.ts",
     "youcam:check": "tsx --env-file-if-exists=.env.local scripts/youcam-spike.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "assistant:smoke": "tsx --env-file-if-exists=.env.local scripts/openrouter-smoke.ts",
+    "data:backup": "tsx --env-file-if-exists=.env.local scripts/data-backup.ts backup",
+    "data:restore": "tsx --env-file-if-exists=.env.local scripts/data-backup.ts restore"
   },
   "engines": {
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.82",
+    "ai": "7.0.159",
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.4",
     "next": "16.4.3",

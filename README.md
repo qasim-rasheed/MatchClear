@@ -6,7 +6,9 @@ MatchClear combines YouCam Clothes Virtual Try-On, recorded review of opposing s
 
 ## Project status
 
-Chat steps 1–10 are implemented locally: organizer setup, permitted photo inputs, durable YouCam previews, appearance acceptance, editable shirt outlines, four screening views, attributed matchup decisions and tournament planning. Three real V3 renders have succeeded in total, including two stock-photo workflow tests. Order exports, broader garment evaluation and target-user research remain future work. No deployment is included.
+The local application now includes steps 1–14 and the technical testing portion of step 15: organizer setup, durable YouCam previews, appearance acceptance, shirt outlines, screening views, attributed matchup decisions, tournament planning, confirmation and frozen order briefs, a validated text helper, photo cleanup and verified backup/restore. Broader garment evaluation and actual target-user research remain outstanding. No deployment is included.
+
+See [steps 11–15 usage and verification](PHASE_11_15.md) and the [product evaluation protocol](EVALUATION.md).
 
 The complete development sequence is in [the implementation plan](docs/IMPLEMENTATION_PLAN.md). See [baseline progress](docs/BASELINE_PROGRESS.md), [architecture](docs/ARCHITECTURE.md), [product brief](docs/PRODUCT_BRIEF.md), [research materials](docs/USER_RESEARCH.md) and [asset credits](docs/ASSET_REGISTER.md).
 
@@ -30,6 +32,10 @@ The database and private files live in ignored `.local`. Seeding never replaces 
 3. Inspect the source, reference and output. Accept or reject the appearance with notes. For an accepted output, mark and confirm the shirt outline.
 4. In **Matchup Review**, choose the opposing options. Inspect ordinary, grayscale, protan and deutan views, and check original references. Record approval, rejection or inconclusive with a reviewer and reason. These are screen-review decisions, not physical accessibility certificates.
 5. In **Tournament Plan**, set starting choices and optional locks, then run planning. It uses recorded stock, size quantities, allocated minimum-order extras, budget and current approvals. Missing evidence produces an incomplete result; impossible conditions produce no valid plan.
+6. Check the consequences for each fixture and any proposed changes. Confirm a complete current plan with your name/initials, then continue to **Order Brief**.
+7. Create the brief with or without generated person previews (excluded by default). Open the printable HTML and use its **Print / Save as PDF** button, or download CSV/JSON. This creates an order specification; it does not buy shirts.
+
+Optional: add `OPENROUTER_API_KEY` to `.env.local` and use **Text Assistant**. It uses the fixed free `nvidia/nemotron-3.5-super-vl:free` model. Read the text-sharing notice, prepare a budget/fixture/lock draft, review the exact edits and explicitly apply them. It cannot approve visual combinations. Forms remain available when the provider fails or reaches its limits. Automatic retries and paid-model fallbacks are disabled.
 
 Changing a photo, design, acceptance or outline invalidates affected visual evidence. Price, stock and budget changes invalidate planning results. Old results remain visible and labeled outdated.
 

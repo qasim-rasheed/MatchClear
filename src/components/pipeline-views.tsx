@@ -6,6 +6,7 @@ import { viewModes, type Point, type ViewMode } from "@/domain/pipeline";
 import { transformPixels } from "@/lib/vision/transforms";
 import type { PlanResult, PlanningInput } from "@/lib/planner/solve";
 import { formatMoney } from "@/domain/validation";
+import { ChoiceConsequences } from "./completion-views";
 
 type Preview = PipelineState["previews"][number];
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
   view: "previews" | "reviews" | "plan";
   onData: (value: Workspace) => void;
   pollingEnabled: boolean;
+  onOrderBrief?: () => void;
 };
 export function assetUrl(eventId: string, id: string) {
   return `/api/assets?event=${encodeURIComponent(eventId)}&id=${encodeURIComponent(id)}`;
@@ -25,7 +27,7 @@ const modeLabels: Record<ViewMode, string> = {
 };
 const active = ["queued", "uploading", "submitting", "running"];
 
-export function PipelineViews({ data, view, onData, pollingEnabled }: Props) {
+export function PipelineViews({ data, view, onData, pollingEnabled, onOrderBrief }: Props) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -76,11 +78,14 @@ export function PipelineViews({ data, view, onData, pollingEnabled }: Props) {
     setError("");
     setNotice("");
     try {
-      const r = await fetch("/api/pipeline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: event.id, revision: event.revision, op, ...payload }),
-      });
+      const r = await fetch(
+        ["confirmPlan", "createBrief"].includes(op) ? "/api/orders" : "/api/pipeline",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId: event.id, revision: event.revision, op, ...payload }),
+        },
+      );
       const result = await r.json();
       if (!r.ok) throw new Error(result.error);
       onData(result);
@@ -179,7 +184,9 @@ export function PipelineViews({ data, view, onData, pollingEnabled }: Props) {
         <PreviewStudio data={data} busy={busy} command={command} upload={upload} />
       )}
       {view === "reviews" && <MatchupReview data={data} busy={busy} command={command} />}
-      {view === "plan" && <PlanView data={data} busy={busy} command={command} />}
+      {view === "plan" && (
+        <PlanView data={data} busy={busy} command={command} onOrderBrief={onOrderBrief} />
+      )}
       <details className="job-history">
         <summary>Saved jobs and recovery ({pipeline.jobs.length})</summary>
         <p className="small-copy">
@@ -1021,15 +1028,20 @@ function MatchupReview({ data, busy, command }: { data: Workspace } & Actions) {
   );
 }
 
-function PlanView({ data, busy, command }: { data: Workspace } & Actions) {
+function PlanView({
+  data,
+  busy,
+  command,
+  onOrderBrief,
+}: { data: Workspace; onOrderBrief?: () => void } & Actions) {
   const event = data.event!,
     pipeline = data.pipeline!;
   const [baseline, setBaseline] = useState<Record<string, string>>({}),
-    [locks, setLocks] = useState<Record<string, string>>({});
+    [locks, setLocks] = useState<Record<string, string>>(data.pipeline!.plannerLocks);
   const selected = Object.fromEntries(
     data.teams.map((t) => [
       t.id,
-      baseline[t.id] || data.options.find((o) => o.teamId === t.id)?.id || "",
+      baseline[t.id] || locks[t.id] || data.options.find((o) => o.teamId === t.id)?.id || "",
     ]),
   );
   const [planId, setPlanId] = useState("");
@@ -1101,6 +1113,7 @@ function PlanView({ data, busy, command }: { data: Workspace } & Actions) {
           <strong>Budget: {formatMoney(event.budgetMinor, event.currency)}</strong>
         </div>
       </section>
+      <ChoiceConsequences data={data} selection={selected} />
       {plan && snapshot ? (
         <section className="plan-result">
           <div className="section-title">
@@ -1144,15 +1157,68 @@ function PlanView({ data, busy, command }: { data: Workspace } & Actions) {
               <span>{snapshot.result.changes} changes from the supplied starting choices</span>
             </div>
           )}
+          {!plan.stale &&
+            snapshot.result.selection &&
+            ["optimal", "feasible"].includes(plan.status) &&
+            (pipeline.confirmations.some((c) => c.planId === plan.id) ? (
+              <div className="form-note">
+                <strong>Plan confirmed.</strong>
+                <button className="button secondary" onClick={onOrderBrief}>
+                  Continue to Order Brief
+                </button>
+              </div>
+            ) : (
+              <form
+                className="completion-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const form = new FormData(e.currentTarget);
+                  void command("confirmPlan", {
+                    planId: plan.id,
+                    reviewer: String(form.get("reviewer")),
+                  });
+                }}
+              >
+                <h3>Confirm this selection</h3>
+                <p className="small-copy">
+                  Confirming freezes the recorded order information for export. It does not place an
+                  order.
+                </p>
+                <label className="field">
+                  <span>Organizer name or initials</span>
+                  <input name="reviewer" minLength={2} maxLength={80} required />
+                </label>
+                <label className="checkbox">
+                  <input type="checkbox" required />I checked this selection, quantities, costs and
+                  review limitations
+                </label>
+                <button className="button" disabled={busy}>
+                  Confirm plan for order brief
+                </button>
+              </form>
+            ))}
           {snapshot.result.selection && (
             <div className="fixture-list">
               {snapshot.input.teams.map((t) => {
                 const id = snapshot.result.selection![t.id];
                 const option = snapshot.input.candidates.find((o) => o.id === id)!;
+                const previousId = snapshot.input.baseline[t.id];
+                const previous = snapshot.input.candidates.find((o) => o.id === previousId);
+                const affected = snapshot.input.fixtures.filter(
+                  (f) => f.teamA === t.id || f.teamB === t.id,
+                );
                 return (
                   <div className="fixture-row" key={t.id}>
                     <strong>{t.name}</strong>
-                    <span>{option.label.split(": ").slice(1).join(": ")}</span>
+                    <span>
+                      {option.label.split(": ").slice(1).join(": ")}
+                      {previousId && previousId !== id && (
+                        <small className="plan-change">
+                          Changed from {previous?.label || "previous choice"}. Affects:{" "}
+                          {affected.map((f) => f.label).join(", ") || "no scheduled fixtures"}.
+                        </small>
+                      )}
+                    </span>
                     <strong>{formatMoney(option.costMinor, event.currency)}</strong>
                   </div>
                 );

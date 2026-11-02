@@ -12,9 +12,19 @@ import {
 import { Shirt } from "./shirt";
 import { CsvImport } from "./csv-import";
 import { PipelineViews, assetUrl } from "./pipeline-views";
+import { OrderBriefView, TextAssistantView, DataRecoveryView } from "./completion-views";
 
 type Tab =
-  "overview" | "teams" | "fixtures" | "shirts" | "previews" | "reviews" | "plan" | "settings";
+  | "overview"
+  | "teams"
+  | "fixtures"
+  | "shirts"
+  | "previews"
+  | "reviews"
+  | "plan"
+  | "brief"
+  | "assistant"
+  | "settings";
 type Team = Workspace["teams"][number];
 type Design = Workspace["designs"][number];
 type Option = Workspace["options"][number];
@@ -31,9 +41,11 @@ const labels: Record<Tab, string> = {
   previews: "Preview Studio",
   reviews: "Matchup Review",
   plan: "Tournament Plan",
+  brief: "Order Brief",
+  assistant: "Text Assistant",
   settings: "Workspace settings",
 };
-const steps = ["Set up event", "Preview shirts", "Review matchups", "Choose a plan"];
+const steps = ["Set up event", "Preview shirts", "Review matchups", "Choose a plan", "Order brief"];
 
 function Icon({ name }: { name: string }) {
   const paths: Record<string, ReactNode> = {
@@ -203,7 +215,17 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
         </label>
         <nav aria-label="Workspace">
           {(
-            ["overview", "teams", "fixtures", "shirts", "previews", "reviews", "plan"] as Tab[]
+            [
+              "overview",
+              "teams",
+              "fixtures",
+              "shirts",
+              "previews",
+              "reviews",
+              "plan",
+              "brief",
+              "assistant",
+            ] as Tab[]
           ).map((key) => (
             <button
               key={key}
@@ -326,7 +348,7 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                                 ? "Find a complete selection using reviewed pairs, available quantities and your budget."
                                 : tab === "shirts"
                                   ? "Keep owned shirts and new options in the same place."
-                                  : "Manage event details, local data and integration readiness."}
+                                  : tab === "brief" ? "Create a frozen order brief from your confirmed selection." : tab === "assistant" ? "Review written proposals before changing your saved event." : "Manage event details, local data and integration readiness."}
                   </p>
                 </div>
                 <button className="button secondary" onClick={() => open({ kind: "event" })}>
@@ -342,7 +364,7 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                         key={step}
                         className={`journey-step ${i === 0 ? "current" : ""}`}
                         onClick={() =>
-                          setTab((["teams", "previews", "reviews", "plan"] as Tab[])[i])
+                          setTab((["teams", "previews", "reviews", "plan", "brief"] as Tab[])[i])
                         }
                       >
                         <span>{String(i + 1).padStart(2, "0")}</span>
@@ -378,6 +400,10 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                             index={i}
                             designs={data.designs}
                             options={data.options}
+                            photoIds={
+                              data.pipeline?.assets.filter((a) => !a.deletedAt).map((a) => a.id) ||
+                              []
+                            }
                             previewStatus={teamPreviewStatus(data, t.id)}
                             onEdit={() => open({ kind: "team", item: t })}
                           />
@@ -480,6 +506,9 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                         index={i}
                         designs={data.designs}
                         options={data.options}
+                        photoIds={
+                          data.pipeline?.assets.filter((a) => !a.deletedAt).map((a) => a.id) || []
+                        }
                         previewStatus={teamPreviewStatus(data, t.id)}
                         onEdit={() => open({ kind: "team", item: t })}
                       />
@@ -634,10 +663,14 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                   view={tab}
                   onData={setData}
                   pollingEnabled={!editor && !busy && !csvImport}
+                  onOrderBrief={() => setTab("brief")}
                 />
               )}
+              {tab === "brief" && <OrderBriefView key={event.id} data={data} onData={setData} />}
+              {tab === "assistant" && <TextAssistantView key={event.id} data={data} onData={setData} />}
               {tab === "settings" && (
                 <div className="settings-grid">
+                  <DataRecoveryView pending={data.pipeline?.cleanupPending} />
                   <section className="settings-panel">
                     <span className="eyebrow">EVENT DETAILS</span>
                     <h2>{event.name}</h2>
@@ -798,6 +831,7 @@ function TeamCard({
   options,
   onEdit,
   previewStatus,
+  photoIds,
 }: {
   team: Team;
   index: number;
@@ -805,6 +839,7 @@ function TeamCard({
   options: Option[];
   onEdit: () => void;
   previewStatus: string;
+  photoIds: string[];
 }) {
   const assigned = options.filter((o) => o.teamId === team.id);
   return (
@@ -825,12 +860,20 @@ function TeamCard({
           const d = designs.find((d) => d.id === o.designId)!;
           return (
             <div key={o.id}>
-              <Shirt
-                primary={d.primaryHex}
-                secondary={d.secondaryHex}
-                pattern={d.pattern}
-                label={`${d.colour} illustration`}
-              />
+              {d.assetId && photoIds.includes(d.assetId) ? (
+                <img
+                  className="team-shirt-photo"
+                  src={assetUrl(team.eventId, d.assetId)}
+                  alt={`${d.name} original garment photograph`}
+                />
+              ) : (
+                <Shirt
+                  primary={d.primaryHex}
+                  secondary={d.secondaryHex}
+                  pattern={d.pattern}
+                  label={`${d.colour} illustration`}
+                />
+              )}
               <span>{o.owned ? "Owned" : "New option"}</span>
             </div>
           );
@@ -1065,8 +1108,8 @@ function EditorModal({
           </p>
           <p>
             Preview Studio generates real YouCam images. Matchup Review records human decisions with
-            modeled screen views. Tournament Plan uses current reviews, stock and budget.
-            Order-brief export is a later step.
+            modeled screen views. Tournament Plan uses current reviews, stock and budget. Confirmed
+            plans export frozen order briefs as printable HTML, CSV and JSON.
           </p>
           <p>
             The starter event contains no real participants or retailer offers. Shirt drawings are

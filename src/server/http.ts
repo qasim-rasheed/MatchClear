@@ -8,7 +8,16 @@ export function assertLocalWrite(request: Request) {
   )
     throw new WorkspaceError("Changes must come from this local workspace.", 403);
 }
+export function assertLocalRead(request: Request) {
+  if (
+    !/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(request.headers.get("host") || "") ||
+    request.headers.get("sec-fetch-site") === "cross-site"
+  )
+    throw new WorkspaceError("Open this file from the local workspace.", 403);
+}
 export function apiError(error: unknown) {
+  if (error instanceof SyntaxError)
+    return Response.json({ error: "Send valid JSON." }, { status: 400 });
   if (error instanceof WorkspaceError)
     return Response.json({ error: error.message }, { status: error.status });
   console.error("Local operation failed", error instanceof Error ? error.name : "Unknown");

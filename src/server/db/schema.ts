@@ -180,6 +180,29 @@ export const exportsTable = sqliteTable("exports", {
   snapshot: text("snapshot", { mode: "json" }).notNull(),
   createdAt: text("created_at").notNull(),
 });
+export const confirmations = sqliteTable("plan_confirmations", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => events.id),
+  planId: text("plan_id")
+    .notNull()
+    .unique()
+    .references(() => plans.id),
+  reviewer: text("reviewer").notNull(),
+  snapshot: text("snapshot", { mode: "json" }).notNull(),
+  createdAt: text("created_at").notNull(),
+});
+export const assistantDrafts = sqliteTable("assistant_drafts", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => events.id),
+  eventRevision: integer("event_revision").notNull(),
+  payload: text("payload", { mode: "json" }).notNull(),
+  appliedAt: text("applied_at"),
+  createdAt: text("created_at").notNull(),
+});
 export const jobs = sqliteTable("jobs", {
   id: text("id").primaryKey(),
   kind: text("kind").notNull(),

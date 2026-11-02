@@ -9,6 +9,7 @@ import { ProviderError, YouCamClient } from "../server/youcam/client";
 import { bumpEvent, currentReview, usablePreview } from "../server/evidence";
 import { solve, type PairDecision, type PlanningInput } from "../lib/planner/solve";
 import { quoteOption } from "../domain/validation";
+import { retryLocalDeletions } from "../server/privacy";
 
 type RenderClient = Pick<YouCamClient, "upload" | "submit" | "status" | "download">;
 type Payload = {
@@ -108,6 +109,7 @@ export async function workerTick(
     onlyKinds?: string[];
   } = {},
 ) {
+  await retryLocalDeletions(ctx, dependencies.files);
   const now = () => (dependencies.now?.() || new Date()).toISOString();
   ctx.db
     .insert(s.runtimeSettings)

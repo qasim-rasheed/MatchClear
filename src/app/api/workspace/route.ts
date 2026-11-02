@@ -1,6 +1,7 @@
 import { getDatabase } from "@/server/db";
 import { seedDatabase } from "@/server/db/seed";
 import { getWorkspace, mutateWorkspace, WorkspaceError } from "@/server/workspace";
+import { assertLocalRead, readLimited } from "@/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ function failure(error: unknown) {
 }
 export async function GET(request: Request) {
   try {
+    assertLocalRead(request);
     const ctx = getDatabase();
     seedDatabase(ctx);
     return Response.json(getWorkspace(ctx, new URL(request.url).searchParams.get("event")), {
@@ -38,13 +40,11 @@ export async function POST(request: Request) {
     );
   if (!request.headers.get("content-type")?.startsWith("application/json"))
     return Response.json({ error: "Send JSON data." }, { status: 415 });
-  const text = await request.text();
-  if (text.length > 32_768)
-    return Response.json({ error: "This change is too large." }, { status: 413 });
   let body: unknown;
   try {
-    body = JSON.parse(text);
-  } catch {
+    body = JSON.parse((await readLimited(request, 32_768)).toString("utf8"));
+  } catch (error) {
+    if (error instanceof WorkspaceError) return failure(error);
     return Response.json({ error: "The request is not valid JSON." }, { status: 400 });
   }
   try {

@@ -3,6 +3,43 @@
   flex-direction: column;
   gap: 24px;
 }
+.completion-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+.completion-form .field {
+  width: 100%;
+  max-width: 640px;
+}
+.consequence-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.consequence-row .status-tag {
+  align-self: flex-start;
+}
+.consequence-row small {
+  line-height: 1.7;
+  color: #56664e;
+}
+.team-shirt-photo {
+  width: 100px;
+  height: 88px;
+  object-fit: contain;
+}
+.settings-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  padding: 12px;
+  background: #f2f3eb;
+}
 .pipeline-banner {
   padding: 15px 18px;
   border: 1px solid #dfe5d7;
@@ -325,6 +362,12 @@
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   margin-bottom: 25px;
+}
+.plan-change {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.5;
+  color: #53634f;
 }
 .plan-team-choices .checkbox {
   margin-top: 10px;

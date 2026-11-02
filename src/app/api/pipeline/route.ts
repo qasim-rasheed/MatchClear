@@ -1,4 +1,4 @@
-import { unlink } from "node:fs/promises";
+import { retryLocalDeletions } from "@/server/privacy";
 import { getDatabase } from "@/server/db";
 import { assertLocalWrite, apiError, readLimited } from "@/server/http";
 import { applyPipeline } from "@/server/pipeline";
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const ctx = getDatabase();
     const result = applyPipeline(ctx, command);
     const files = new PrivateFiles();
-    await Promise.allSettled(result.cleanup.map((key) => unlink(files.path(key))));
+    await retryLocalDeletions(ctx, files);
     return Response.json(getWorkspace(ctx, result.eventId), {
       headers: { "Cache-Control": "no-store" },
     });
