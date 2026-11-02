@@ -127,8 +127,20 @@ export class YouCamClient {
     if (!response.ok) throw new ProviderError("RESULT_DOWNLOAD_FAILED", response.status);
     if (Number(response.headers.get("content-length") || 0) > 20_000_000)
       throw new ProviderError("RESULT_TOO_LARGE");
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > 20_000_000) throw new ProviderError("RESULT_TOO_LARGE");
-    return bytes;
+    const reader = response.body?.getReader();
+    if (!reader) throw new ProviderError("RESULT_DOWNLOAD_FAILED");
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 20_000_000) {
+        await reader.cancel();
+        throw new ProviderError("RESULT_TOO_LARGE");
+      }
+      chunks.push(value);
+    }
+    return new Uint8Array(Buffer.concat(chunks));
   }
 }

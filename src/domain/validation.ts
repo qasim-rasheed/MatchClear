@@ -10,6 +10,9 @@ export const quantitiesSchema = z.object(
 const name = z.string().trim().min(2).max(80);
 const id = z.string().min(1).max(80);
 const revision = z.number().int().positive();
+const extraQuantitiesSchema = quantitiesSchema
+  .partial()
+  .transform((q) => ({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0, ...q }));
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 const date = z
   .string()
@@ -139,6 +142,9 @@ export const mutationSchema = z.discriminatedUnion("op", [
       setupMinor: z.number().int().min(0).max(1_000_000),
       minimumOrder: z.number().int().min(0).max(1000),
       stock: quantitiesSchema,
+      extraQuantities: extraQuantitiesSchema
+        .optional()
+        .default({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 }),
       available: z.boolean(),
       seller: z.string().trim().max(120),
       priceDate: date,
@@ -154,6 +160,9 @@ export const mutationSchema = z.discriminatedUnion("op", [
       setupMinor: z.number().int().min(0).max(1_000_000),
       minimumOrder: z.number().int().min(0).max(1000),
       stock: quantitiesSchema,
+      extraQuantities: extraQuantitiesSchema
+        .optional()
+        .default({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 }),
       available: z.boolean(),
       seller: z.string().trim().max(120),
       priceDate: date,
@@ -185,13 +194,17 @@ export function quoteOption(
     minimumOrder: number;
     stock: Record<string, number>;
     available: boolean;
+    extraQuantities?: Record<string, number>;
   },
   demand: Record<string, number>,
 ) {
   const requested = totalQuantity(demand);
-  const orderQuantity = option.owned ? requested : Math.max(requested, option.minimumOrder);
+  const allocated = requested + totalQuantity(option.extraQuantities || {});
+  const orderQuantity = option.owned ? requested : Math.max(allocated, option.minimumOrder);
   const sizesAvailable = Object.entries(demand).every(
-    ([size, amount]) => (option.stock[size] ?? 0) >= amount,
+    ([size, amount]) =>
+      (option.stock[size] ?? 0) >=
+      amount + (option.owned ? 0 : option.extraQuantities?.[size] || 0),
   );
   return {
     requested,
@@ -199,6 +212,6 @@ export function quoteOption(
     extraUnits: orderQuantity - requested,
     totalMinor: option.owned ? 0 : orderQuantity * option.unitMinor + option.setupMinor,
     eligible: option.available && requested > 0 && sizesAvailable,
-    minimumOrderNeedsSizes: !option.owned && orderQuantity > requested,
+    minimumOrderNeedsSizes: !option.owned && orderQuantity > allocated,
   };
 }

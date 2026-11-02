@@ -23,6 +23,7 @@ export const teams = sqliteTable(
     code: text("code").notNull(),
     quantities: text("quantities", { mode: "json" }).$type<Record<string, number>>().notNull(),
     revision: integer("revision").notNull().default(1),
+    personAssetId: text("person_asset_id").references(() => assets.id),
   },
   (t) => [uniqueIndex("team_event_name").on(t.eventId, t.name)],
 );
@@ -93,6 +94,10 @@ export const options = sqliteTable("shirt_options", {
   seller: text("seller").notNull(),
   priceDate: text("price_date").notNull(),
   illustrative: integer("illustrative", { mode: "boolean" }).notNull().default(false),
+  extraQuantities: text("extra_quantities", { mode: "json" })
+    .$type<Record<string, number>>()
+    .notNull()
+    .default({}),
   revision: integer("revision").notNull().default(1),
 });
 export const previews = sqliteTable("previews", {
@@ -118,6 +123,11 @@ export const previews = sqliteTable("previews", {
   revision: integer("revision").notNull().default(1),
   stale: integer("stale", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
+  teamId: text("team_id").references(() => teams.id),
+  designRevision: integer("design_revision").notNull().default(1),
+  acceptance: text("acceptance").notNull().default("pending"),
+  acceptanceReason: text("acceptance_reason").notNull().default(""),
+  reviewer: text("reviewer").notNull().default(""),
 });
 export const regions = sqliteTable("shirt_regions", {
   id: text("id").primaryKey(),
@@ -182,6 +192,8 @@ export const jobs = sqliteTable("jobs", {
   errorCode: text("error_code"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  nextRunAt: text("next_run_at"),
+  leaseOwner: text("lease_owner"),
 });
 export const usage = sqliteTable(
   "usage_ledger",
@@ -205,4 +217,8 @@ export const activity = sqliteTable("activity", {
   entityId: text("entity_id").notNull(),
   detail: text("detail", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
   createdAt: text("created_at").notNull(),
+});
+export const runtimeSettings = sqliteTable("runtime_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
 });

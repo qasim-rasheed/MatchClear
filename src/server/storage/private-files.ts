@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 export class PrivateFiles {
   readonly root: string;
   constructor(root = resolve(process.env.MATCHCLEAR_DATA_DIR || ".local", "files")) {
-    this.root = resolve(root);
+    // Runtime private data is not a build asset. Keys are confined by path() below.
+    this.root = resolve(/* turbopackIgnore: true */ root);
   }
   path(key: string) {
     const path = resolve(this.root, key);

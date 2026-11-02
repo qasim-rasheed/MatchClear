@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import type { DatabaseContext } from "./db";
 import * as s from "./db/schema";
 import { mutationSchema, totalQuantity } from "@/domain/validation";
+import { readPipelineState } from "./pipeline";
 
 export class WorkspaceError extends Error {
   constructor(
@@ -24,6 +25,7 @@ export function getWorkspace(ctx: DatabaseContext, eventId?: string | null) {
   return {
     events: eventList,
     event: event ?? null,
+    pipeline: event ? readPipelineState(ctx, event.id) : null,
     teams: event ? ctx.db.select().from(s.teams).where(eq(s.teams.eventId, event.id)).all() : [],
     fixtures: event
       ? ctx.db.select().from(s.fixtures).where(eq(s.fixtures.eventId, event.id)).all()
@@ -331,7 +333,10 @@ export function mutateWorkspace(ctx: DatabaseContext, raw: unknown): { eventId: 
             .get()
         )
           throw new WorkspaceError("Choose a shirt from this event.");
-        if (cmd.input.owned && (cmd.input.unitMinor || cmd.input.setupMinor))
+        if (
+          cmd.input.owned &&
+          (cmd.input.unitMinor || cmd.input.setupMinor || totalQuantity(cmd.input.extraQuantities))
+        )
           throw new WorkspaceError("Owned shirts have no new purchase or setup cost.");
         entityId = crypto.randomUUID();
         ctx.db
@@ -345,7 +350,10 @@ export function mutateWorkspace(ctx: DatabaseContext, raw: unknown): { eventId: 
           .where(and(eq(s.options.id, cmd.optionId), eq(s.options.eventId, event.id)))
           .get();
         if (!prior) throw new WorkspaceError("Shirt option not found.", 404);
-        if (prior.owned && (cmd.input.unitMinor || cmd.input.setupMinor))
+        if (
+          prior.owned &&
+          (cmd.input.unitMinor || cmd.input.setupMinor || totalQuantity(cmd.input.extraQuantities))
+        )
           throw new WorkspaceError("Owned shirts have no new purchase or setup cost.");
         entityId = prior.id;
         ctx.db

@@ -11,8 +11,10 @@ import {
 } from "@/domain/validation";
 import { Shirt } from "./shirt";
 import { CsvImport } from "./csv-import";
+import { PipelineViews, assetUrl } from "./pipeline-views";
 
-type Tab = "overview" | "teams" | "fixtures" | "shirts" | "settings";
+type Tab =
+  "overview" | "teams" | "fixtures" | "shirts" | "previews" | "reviews" | "plan" | "settings";
 type Team = Workspace["teams"][number];
 type Design = Workspace["designs"][number];
 type Option = Workspace["options"][number];
@@ -26,6 +28,9 @@ const labels: Record<Tab, string> = {
   teams: "Teams",
   fixtures: "Fixtures",
   shirts: "Shirt library",
+  previews: "Preview Studio",
+  reviews: "Matchup Review",
+  plan: "Tournament Plan",
   settings: "Workspace settings",
 };
 const steps = ["Set up event", "Preview shirts", "Review matchups", "Choose a plan"];
@@ -155,7 +160,14 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
     data.teams.length > 1,
     data.fixtures.length > 0,
     data.teams.length > 0 && data.teams.every((t) => data.options.some((o) => o.teamId === t.id)),
-    false,
+    Boolean(
+      data.options.length &&
+      data.options.every((o) =>
+        data.pipeline?.previews.some(
+          (p) => p.teamId === o.teamId && p.designId === o.designId && p.usable,
+        ),
+      ),
+    ),
   ];
 
   return (
@@ -190,7 +202,9 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
           </select>
         </label>
         <nav aria-label="Workspace">
-          {(["overview", "teams", "fixtures", "shirts"] as Tab[]).map((key) => (
+          {(
+            ["overview", "teams", "fixtures", "shirts", "previews", "reviews", "plan"] as Tab[]
+          ).map((key) => (
             <button
               key={key}
               className={`nav-item ${tab === key ? "active" : ""}`}
@@ -304,9 +318,15 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                         ? "Set the roster and shirt quantities for each team."
                         : tab === "fixtures"
                           ? "Record who plays whom. Every opposing pair will need a review."
-                          : tab === "shirts"
-                            ? "Keep owned shirts and new options in the same place."
-                            : "Manage event details, local data and integration readiness."}
+                          : tab === "previews"
+                            ? "Save permitted source photos, generate real previews and inspect their appearance."
+                            : tab === "reviews"
+                              ? "Inspect opposing combinations and record human review with current image evidence."
+                              : tab === "plan"
+                                ? "Find a complete selection using reviewed pairs, available quantities and your budget."
+                                : tab === "shirts"
+                                  ? "Keep owned shirts and new options in the same place."
+                                  : "Manage event details, local data and integration readiness."}
                   </p>
                 </div>
                 <button className="button secondary" onClick={() => open({ kind: "event" })}>
@@ -317,11 +337,17 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                 <>
                   <div className="journey" aria-label="Project workflow">
                     {steps.map((step, i) => (
-                      <div key={step} className={i === 0 ? "current" : ""}>
+                      <button
+                        type="button"
+                        key={step}
+                        className={`journey-step ${i === 0 ? "current" : ""}`}
+                        onClick={() =>
+                          setTab((["teams", "previews", "reviews", "plan"] as Tab[])[i])
+                        }
+                      >
                         <span>{String(i + 1).padStart(2, "0")}</span>
                         {step}
-                        {i > 0 && <small>Coming next</small>}
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <section className="summary-strip" aria-label="Event summary">
@@ -352,6 +378,7 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                             index={i}
                             designs={data.designs}
                             options={data.options}
+                            previewStatus={teamPreviewStatus(data, t.id)}
                             onEdit={() => open({ kind: "team", item: t })}
                           />
                         ))}
@@ -396,7 +423,7 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                                   {readiness[i]
                                     ? "Ready"
                                     : i === 3
-                                      ? "Live feasibility test first"
+                                      ? "Open Preview Studio"
                                       : "Needs your input"}
                                 </small>
                               </div>
@@ -406,14 +433,16 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                         <button
                           className="button full"
                           onClick={() =>
-                            open({
-                              kind:
-                                data.teams.length < 2
-                                  ? "team"
-                                  : data.fixtures.length
-                                    ? "option"
-                                    : "fixture",
-                            })
+                            data.teams.length > 1 && data.fixtures.length && readiness[2]
+                              ? setTab("previews")
+                              : open({
+                                  kind:
+                                    data.teams.length < 2
+                                      ? "team"
+                                      : data.fixtures.length
+                                        ? "option"
+                                        : "fixture",
+                                })
                           }
                         >
                           Continue event setup <span aria-hidden="true">→</span>
@@ -424,7 +453,7 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                         <h3>Examples, clearly marked.</h3>
                         <p>
                           {event.sample
-                            ? "This starter uses fictional teams, original shirt illustrations and illustrative prices. No visual combinations have been approved."
+                            ? "Example teams and prices are illustrative. Catalog drawings are illustrations; source photos and their permission notes are kept separately. Development walkthrough decisions are not user-research findings."
                             : "Your records are saved locally. Catalog illustrations need real photographic references before a preview can support matchup review."}
                         </p>
                         <button className="text-button" onClick={() => open({ kind: "help" })}>
@@ -451,6 +480,7 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                         index={i}
                         designs={data.designs}
                         options={data.options}
+                        previewStatus={teamPreviewStatus(data, t.id)}
                         onEdit={() => open({ kind: "team", item: t })}
                       />
                     ))}
@@ -509,13 +539,26 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                       .map((d) => (
                         <article className="shirt-card" key={d.id}>
                           <div className="shirt-stage">
-                            <span className="stage-label">ILLUSTRATION</span>
-                            <Shirt
-                              primary={d.primaryHex}
-                              secondary={d.secondaryHex}
-                              pattern={d.pattern}
-                              label={`${d.colour} ${d.pattern} shirt illustration`}
-                            />
+                            <span className="stage-label">
+                              {d.assetId ? "PHOTO REFERENCE" : "ILLUSTRATION"}
+                            </span>
+                            {d.assetId &&
+                            data.pipeline?.assets.some(
+                              (a) => a.id === d.assetId && !a.deletedAt,
+                            ) ? (
+                              <img
+                                className="library-reference"
+                                src={assetUrl(event.id, d.assetId)}
+                                alt={`${d.name} original garment reference`}
+                              />
+                            ) : (
+                              <Shirt
+                                primary={d.primaryHex}
+                                secondary={d.secondaryHex}
+                                pattern={d.pattern}
+                                label={`${d.colour} ${d.pattern} shirt illustration`}
+                              />
+                            )}
                             <span className="design-number">
                               REF {d.id.slice(0, 5).toUpperCase()}
                             </span>
@@ -584,6 +627,15 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                   )}
                 </>
               )}
+              {(tab === "previews" || tab === "reviews" || tab === "plan") && (
+                <PipelineViews
+                  key={`${event.id}:${tab}`}
+                  data={data}
+                  view={tab}
+                  onData={setData}
+                  pollingEnabled={!editor && !busy && !csvImport}
+                />
+              )}
               {tab === "settings" && (
                 <div className="settings-grid">
                   <section className="settings-panel">
@@ -612,7 +664,7 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                     </h2>
                     <p>
                       {data.integration.configured
-                        ? "The server can read a local key. The separate feasibility CLI records real render results; these are not yet linked to event reviews."
+                        ? "The server can read a local key. Preview Studio queues real Clothes V3 tasks through the local worker."
                         : "Add YOUCAM_API_KEY to your ignored .env.local file to prepare the feasibility test."}
                     </p>
                     <div className="status-tag">
@@ -621,8 +673,9 @@ export function WorkspaceApp({ initial }: { initial: Workspace }) {
                         : "Live validation pending"}
                     </div>
                     <p className="small-copy">
-                      The API test is run separately with permitted photos. This baseline does not
-                      submit renders from the interface.
+                      Estimated units reserved: {data.integration.estimatedUnits}. Account billing
+                      is not automatically reconciled. The local worker must be running for
+                      generation and planning.
                     </p>
                   </section>
                   <section className="settings-panel full-span">
@@ -744,12 +797,14 @@ function TeamCard({
   designs,
   options,
   onEdit,
+  previewStatus,
 }: {
   team: Team;
   index: number;
   designs: Design[];
   options: Option[];
   onEdit: () => void;
+  previewStatus: string;
 }) {
   const assigned = options.filter((o) => o.teamId === team.id);
   return (
@@ -783,7 +838,7 @@ function TeamCard({
         {!assigned.length && <div className="no-shirt">No shirt options assigned</div>}
       </div>
       <div className="team-card-bottom">
-        <span className="status-tag">Preview needed</span>
+        <span className="status-tag">{previewStatus}</span>
         <span>
           {sizeKeys
             .filter((s) => team.quantities[s])
@@ -819,7 +874,13 @@ function FixtureList({
             <strong>{teamName(f.teamB)}</strong>
           </div>
           <span className="fixture-label">{f.label}</span>
-          <span className="status-tag">Not reviewed</span>
+          <span className="status-tag">
+            {data.pipeline?.reviews.some(
+              (r) => r.fixtureId === f.id && r.current && r.status === "approved",
+            )
+              ? "Approved pair recorded"
+              : "Review needed"}
+          </span>
           {onRemove && (
             <button
               className="icon-button"
@@ -852,11 +913,31 @@ function activityLabel(value: string) {
         updateDesign: "Shirt design changed; visual evidence invalidated",
         addOption: "Shirt assigned to a team",
         updateOption: "Price or availability updated",
+        "photo.uploaded": "Permitted photo saved locally",
+        "preview.completed": "YouCam preview completed; appearance inspection needed",
+        "plan.completed": "Tournament planning run completed",
+        queuePreviews: "Preview batch queued or reused",
+        acceptPreview: "Preview appearance inspected",
+        saveRegion: "Shirt area confirmed",
+        reviewPair: "Human matchup review recorded",
+        queuePlan: "Tournament planning queued",
+        deleteAsset: "Local photo removed; related evidence invalidated",
+        cancelJob: "Local job cancelled",
+        resumeJob: "Known provider task resumed",
       } as Record<string, string>
     )[value] || value
   );
 }
 
+function teamPreviewStatus(data: Workspace, teamId: string) {
+  const previews = data.pipeline?.previews.filter((p) => p.teamId === teamId && !p.stale) || [];
+  const accepted = previews.filter((p) => p.usable).length;
+  if (accepted) return `${accepted} accepted preview${accepted > 1 ? "s" : ""}`;
+  if (previews.some((p) => ["queued", "running", "submitting", "uploading"].includes(p.status)))
+    return "Preview processing";
+  if (previews.some((p) => p.status === "success")) return "Inspect appearance";
+  return "Preview needed";
+}
 function EditorModal({
   editor,
   data,
@@ -935,6 +1016,7 @@ function EditorModal({
           setupMinor: moneyToMinor(str("setup")),
           minimumOrder: num("minimum"),
           stock: quantities("stock-"),
+          extraQuantities: quantities("extra-"),
           available: form.has("available"),
           seller: str("seller"),
           priceDate: str("priceDate"),
@@ -982,8 +1064,9 @@ function EditorModal({
             price/availability records on this computer.
           </p>
           <p>
-            YouCam feasibility tools and the review data model are prepared. Preview generation,
-            visual screening, tournament optimization and order exports are later steps.
+            Preview Studio generates real YouCam images. Matchup Review records human decisions with
+            modeled screen views. Tournament Plan uses current reviews, stock and budget.
+            Order-brief export is a later step.
           </p>
           <p>
             The starter event contains no real participants or retailer offers. Shirt drawings are
@@ -1238,6 +1321,10 @@ function EditorModal({
                     prefix="stock-"
                     values={option?.stock || { XS: 20, S: 20, M: 20, L: 20, XL: 20, XXL: 20 }}
                   />
+                </fieldset>
+                <fieldset>
+                  <legend>Extra purchase units by size (for minimum orders)</legend>
+                  <Sizes prefix="extra-" values={option?.extraQuantities || {}} />
                 </fieldset>
                 <label className="checkbox">
                   <input

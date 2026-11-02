@@ -2,11 +2,11 @@
 
 Help tournament organizers choose team shirts that are easier to tell apart, including for colour-blind players and fans.
 
-MatchClear is a planned web application combining YouCam Clothes Virtual Try-On, human review of opposing shirt combinations, and tournament-wide shirt selection under a budget.
+MatchClear combines YouCam Clothes Virtual Try-On, recorded review of opposing shirt combinations, and tournament-wide shirt selection under a budget.
 
 ## Project status
 
-The local baseline is implemented through organizer setup: events, teams, size quantities, fixtures, shirt illustrations, price/stock records and reviewed CSV imports. Data persists in SQLite. One real YouCam V3 feasibility render has succeeded; the full preview studio, visual screening, planner and exports are later steps. No user study or deployment is complete.
+Chat steps 1–10 are implemented locally: organizer setup, permitted photo inputs, durable YouCam previews, appearance acceptance, editable shirt outlines, four screening views, attributed matchup decisions and tournament planning. Three real V3 renders have succeeded in total, including two stock-photo workflow tests. Order exports, broader garment evaluation and target-user research remain future work. No deployment is included.
 
 The complete development sequence is in [the implementation plan](docs/IMPLEMENTATION_PLAN.md). See [baseline progress](docs/BASELINE_PROGRESS.md), [architecture](docs/ARCHITECTURE.md), [product brief](docs/PRODUCT_BRIEF.md), [research materials](docs/USER_RESEARCH.md) and [asset credits](docs/ASSET_REGISTER.md).
 
@@ -17,10 +17,23 @@ The complete development sequence is in [the implementation plan](docs/IMPLEMENT
 - Copy `.env.example` to `.env.local`. Add `YOUCAM_API_KEY` there, never to a tracked file.
 - Run `npm run db:seed` to apply migrations and create the illustrative starter if the database is empty.
 - Run `npm run dev` and open http://127.0.0.1:3000 .
-- Run `npm run worker` in another terminal for the baseline healthcheck worker. It does not submit renders automatically.
+- Run `npm run worker` in another terminal. It processes queued preview and planning jobs; generating a preview explicitly authorizes sending its selected photos to YouCam and reserves an estimated two units.
+- To process planning jobs without uploads or render submissions, use `npm run worker -- --plans-only` instead.
 - Run `npm test`, `npm run typecheck` and `npm run build` for local checks.
 
-The database and private files live in ignored `.local`. Seeding never replaces an existing workspace. Development works without an API key; only the explicitly invoked provider test requires one.
+The database and private files live in ignored `.local`. Seeding never replaces an existing workspace. Setup, saved reviews and planning work without an API key; new YouCam renders require one. The unit ledger is conservative, not account billing. The default global allowance is 40 estimated units.
+
+## Use the new flow
+
+1. In **Preview Studio**, choose a team and assigned shirt. Save a permitted adult-person photo and a front-facing garment photograph. Catalog drawings cannot serve as photographic references.
+2. Confirm permission to send the two photos to YouCam, then generate. The worker saves task progress; leaving the page does not lose the job. Identical completed inputs are reused.
+3. Inspect the source, reference and output. Accept or reject the appearance with notes. For an accepted output, mark and confirm the shirt outline.
+4. In **Matchup Review**, choose the opposing options. Inspect ordinary, grayscale, protan and deutan views, and check original references. Record approval, rejection or inconclusive with a reviewer and reason. These are screen-review decisions, not physical accessibility certificates.
+5. In **Tournament Plan**, set starting choices and optional locks, then run planning. It uses recorded stock, size quantities, allocated minimum-order extras, budget and current approvals. Missing evidence produces an incomplete result; impossible conditions produce no valid plan.
+
+Changing a photo, design, acceptance or outline invalidates affected visual evidence. Price, stock and budget changes invalidate planning results. Old results remain visible and labeled outdated.
+
+See [steps 8–10 usage and limits](docs/PHASE_8_10.md) and [verification](docs/VERIFICATION.md).
 
 ## Explicit YouCam feasibility test
 

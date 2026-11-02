@@ -1,0 +1,11 @@
+ALTER TABLE teams ADD COLUMN person_asset_id TEXT REFERENCES assets(id);
+ALTER TABLE shirt_options ADD COLUMN extra_quantities TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE previews ADD COLUMN team_id TEXT REFERENCES teams(id);
+ALTER TABLE previews ADD COLUMN design_revision INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE previews ADD COLUMN acceptance TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE previews ADD COLUMN acceptance_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE previews ADD COLUMN reviewer TEXT NOT NULL DEFAULT '';
+ALTER TABLE jobs ADD COLUMN next_run_at TEXT;
+ALTER TABLE jobs ADD COLUMN lease_owner TEXT;
+CREATE INDEX preview_team_design ON previews(event_id, team_id, design_id);
+CREATE TABLE runtime_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
